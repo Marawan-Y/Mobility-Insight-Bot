@@ -1,0 +1,46 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f8f9fa;
+  }
+  .sidebar {
+    background-color: #343a40;
+    color: #fff;
+    min-height: 100vh;
+    padding: 1rem;
+  }
+  .sidebar a {
+    color: #fff;
+    text-decoration: none;
+    display: block;
+    padding: 0.25rem 0;
+  }
+  .sidebar .active a {
+    font-weight: bold;
+    text-decoration: underline;
+  }
+  .new-query {
+    font-weight: bold;
+  }
+  #chat-container {
+    background: #fff;
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  .user-message {
+    background: #cce5ff;
+    padding: .5rem;
+    margin: .5rem 0;
+    border-radius: 5px;
+    text-align: right;
+  }
+  .bot-message {
+    background: #e9ecef;
+    padding: .5rem;
+    margin: .5rem 0;
+    border-radius: 5px;
+    text-align: left;
+  }
+  

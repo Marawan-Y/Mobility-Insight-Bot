@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="welcome-card card mb-4 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-primary">🚀 Welcome to Mobility Insight Bot</h2>
+      <p class="card-text lead">
+        Hello there! I'm your friendly AI assistant, here to guide you through the latest <strong>mobility technology trends</strong>.
+        Simply enter your query in the format <code>[Use-case, Sector, Demand]</code> below, and I'll deliver:
+        <ul>
+          <li>Top technology trend solutions</li>
+          <li>Comprehensive assessments with data-driven scores</li>
+          <li>Priority radar positioning (ACT / PREPARE / WATCH)</li>
+          <li>Key PESTEL drivers</li>
+        </ul>
+        Let's drive innovation together! 🚚💡
+      </p>
+    </div>
+  </div>
+
+  <div id="chat-container">
+    {% for msg in messages %}
+      {% if msg.sender == 'user' %}
+        <div class="user-message">{{ msg.text|e }}</div>
+      {% else %}
+        <div class="bot-message" data-markdown="true">{{ msg.text }}</div>
+      {% endif %}
+    {% endfor %}
+    <div id="bottom-anchor"></div>
+  </div>
+{% endblock %}

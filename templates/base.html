@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobility Insight Bot</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- Markdown renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <nav class="col-sm-3 sidebar">
+        <ul class="list-unstyled">
+          <li><a href="{{ url_for('new_conversation') }}" class="new-query">+ New Query</a></li>
+          <hr>
+          {% for rec in history %}
+          <li class="{% if current_id and rec.id == current_id %}active{% endif %}">
+            <a href="{{ url_for('view_conversation', conv_id=rec.id) }}">
+              {{ rec.use_case }} ({{ rec.sector }}) – 
+              {{ rec.demand[:30] }}{% if rec.demand|length > 30 %}…{% endif %}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+      <main class="col-sm-9 px-4 py-3">
+        {% block content %}{% endblock %}
+        {% if not history_mode %}
+        <form method="post" class="mt-3">
+          <div class="input-group">
+            <input type="text" name="message" class="form-control" autocomplete="off"
+                   placeholder="Type message here...">
+            <div class="input-group-append">
+              <button class="btn btn-primary" type="submit">Send</button>
+            </div>
+          </div>
+        </form>
+        {% else %}
+        <p class="text-muted"><em>Viewing past conversation. Click “New Query” to start over.</em></p>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+  {% if not history_mode %}
+  <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+  {% endif %}
+</body>
+</html>
