@@ -1,391 +1,249 @@
 import os
 import re
 import time
-from flask import Flask, request, session, render_template, redirect, url_for
+import pymysql
+import markdown
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Text, TIMESTAMP, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from google.oauth2 import service_account
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
-from google.api_core.exceptions import ResourceExhausted
+from flask import (
+    Flask, render_template, request,
+    session, redirect, url_for, flash
+)
 
-# Load .env
+# ─── Load environment ─────────────────────────────────────────────────────────
 load_dotenv()
-
-# --- Environment & DB Setup ---
-
-DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_PORT = os.getenv('DB_PORT', '3306')
-DB_NAME = os.getenv('DB_NAME', '')
-DB_USER = os.getenv('DB_USER', '')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '')
-
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = create_engine(DATABASE_URL, echo=False)
-Base = declarative_base()
-SessionLocal = sessionmaker(bind=engine)
-
-# --- SQLAlchemy Model ---
-
-class TrendQuery(Base):
-    __tablename__ = 'trend_queries'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    use_case = Column(String(255))
-    sector = Column(String(255))
-    demand = Column(String(255))
-    trend_solutions = Column(Text)
-    trend_assessment = Column(Text)
-    radar_positioning = Column(Text)
-    pestel_tag = Column(Text)
-    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
-
-# --- Vertex AI / Gemini Setup ---
-
-PROJECT_ID = os.getenv('PROJECT_ID', '')
-LOCATION = os.getenv('LOCATION', 'us-central1')
-SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE', '')
-MODEL_NAME = os.getenv('MODEL_NAME', 'gemini-1.5-flash')
-
-creds = None
-if SERVICE_ACCOUNT_FILE:
-    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-
-try:
-    vertexai.init(project=PROJECT_ID, location=LOCATION, credentials=creds)
-    llm_model = GenerativeModel(model_name=MODEL_NAME)
-    generation_params = GenerationConfig(temperature=0.2, max_output_tokens=1024)
-except Exception as e:
-    llm_model = None
-    print("Vertex AI init failed:", e)
-
-# --- Flask App Setup ---
-
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'change_me')
+app.secret_key = os.getenv("SECRET_KEY", "change_me")
 
-# --- Prompt Templates (now ask for Markdown) ---
+# ─── Database config ───────────────────────────────────────────────────────────
+DB_HOST     = os.getenv("DB_HOST", "localhost")
+DB_PORT     = int(os.getenv("DB_PORT", 3306))
+DB_USER     = os.getenv("DB_USER", "your_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "your_pass")
+DB_NAME     = os.getenv("DB_NAME", "mobility_bot")  # or your actual DB
 
-FIRST_PROMPT_TEMPLATE = """
-You are an expert in mobility technology and innovation. The user is interested in the following demand for **{use_case}** in the **{sector}** sector: “{demand}”.
-[...existing detailed instructions...]
-Please return the entire response **in Markdown**, using:
-- Top‐level headings (e.g. `## Trend Title`)
-- Bold labels or sub‐headings for each subsection
-- Bullet lists where appropriate
-- Ensure **all five** trends appear, in one coherent Markdown document.
-"""
+# ─── LLM config ────────────────────────────────────────────────────────────────
+LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "openai").lower()
+OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
+VERTEX_PROJECT  = os.getenv("VERTEX_PROJECT")
+VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
+VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-1.0-pro")
 
-ASSESS_PROMPT_TEMPLATE = """
-I need you to perform a comprehensive trend assessment for each of the following trends, based on these criteria.
-{trends_markdown}
+if LLM_PROVIDER == "vertex":
+    import vertexai
+    try:
+        from vertexai.preview.generative_models import GenerativeModel
+    except ImportError:
+        from vertexai.generative_models import GenerativeModel
+else:
+    from openai import OpenAI
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-Please format your assessment **in Markdown**, using:
-- A heading (`## Comprehensive Trend Assessment`)
-- A bullet list for each criterion with its numeric score
-- Ensure the scores are clearly labeled.
-"""
-
-RADAR_PROMPT_TEMPLATE = """
-Based on the trend evaluations, classify each trend into one of: ACT, PREPARE, or WATCH.
-Trends:
-{trends_markdown}
-
-Please format the classification **in Markdown**, using:
-- A heading (`## Radar Positioning`)
-- Bullet list (`- Trend Title: ACT`) for each trend
-- Include a brief justification inline.
-"""
-
-PESTEL_PROMPT_TEMPLATE = """
-Identify the primary PESTEL driver for each of the following trends, with a brief justification.
-Trends:
-{trends_markdown}
-
-Please format the PESTEL results **in Markdown**, using:
-- A heading (`## PESTEL Trend Radar`)
-- Bullet lists (`- Trend Title: Technological`) for each trend
-- The brief justification inline.
-"""
-
-# --- LLM Call with Retry & Backoff ---
-
-def call_vertex_llm(prompt: str, max_retries=3, initial_delay=1.0) -> str:
-    if llm_model is None:
-        raise RuntimeError("LLM model not initialized")
-    attempt = 0
-    delay = initial_delay
-    while True:
+def call_llm(prompt, max_retries=3, delay=1.0, max_tokens=1500):
+    for attempt in range(max_retries):
         try:
-            response = llm_model.generate_content(prompt, generation_config=generation_params)
-            # Extract text
-            if hasattr(response, 'text'):
-                return response.text.strip()
-            elif response.candidates:
-                return str(response.candidates[0]).strip()
+            if LLM_PROVIDER == "vertex":
+                vertexai.init(project=VERTEX_PROJECT, location=VERTEX_LOCATION)
+                model = GenerativeModel(model_name=VERTEX_MODEL)
+                return model.generate_content(
+                    prompt,
+                    temperature=0.5,
+                    max_output_tokens=max_tokens
+                ).text.strip()
             else:
-                return ""
-        except ResourceExhausted:
-            attempt += 1
-            if attempt > max_retries:
-                raise
-            print(f"429 received – retrying in {delay}s (attempt {attempt}/{max_retries})")
-            time.sleep(delay)
-            delay *= 2
-        except Exception:
+                resp = openai_client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role":"user","content":prompt}],
+                    temperature=0.5,
+                    max_tokens=max_tokens
+                )
+                return resp.choices[0].message.content.strip()
+        except Exception as e:
+            txt = str(e).lower()
+            if any(code in txt for code in ("429", "rate limit", "quota")):
+                time.sleep(delay)
+                delay *= 2
+                continue
             raise
+    raise RuntimeError("LLM unavailable after retries")
 
-# --- Flask Routes ---
+# ─── Utility to split out exactly 3 trend blocks ──────────────────────────────
+def split_trend_blocks(raw_md: str):
+    matches = list(re.finditer(r"(?mi)^.*?trend title:\s*(.+)$", raw_md))
+    titles, contents = [], []
+    for idx, m in enumerate(matches):
+        titles.append(m.group(1).strip())
+        start = m.end()
+        end = matches[idx+1].start() if idx+1 < len(matches) else len(raw_md)
+        contents.append(raw_md[start:end].strip())
+    return titles, contents
 
-@app.route('/', methods=['GET', 'POST'])
+# ─── Step 1: ask the LLM for 3 trends ────────────────────────────────────────────
+def generate_trends(use_case, sector, demand):
+    prompt = (
+        f"You are an expert in mobility technology. The user demand is in **{use_case}** / **{sector}**: “{demand}”.\n\n"
+        "Provide **exactly 3** trend solutions. Each must start with “Trend Title: <title>” "
+        "then Description:, Relevance / Impact:, Value Proposition:, Key Players:.\n"
+        "Return them in Markdown."
+    )
+    return call_llm(prompt)
+
+# ─── Steps 2–4: assessment, radar, PESTEL ───────────────────────────────────────
+def assess_trend(title, block_md):
+    prompt = (
+        f"## Comprehensive Trend Assessment for “{title}”\n\n"
+        f"{block_md}\n\n"
+        "Rate 1–10 in a Markdown table for: Impact, Disruptive Potential, Uncertainty, Market Size, "
+        "KPIs, Revenue Potential, Competitive Edge, Ease of Implementation, Scalability, Sustainability."
+    )
+    return call_llm(prompt)
+
+def radar_positioning(title, assess_md):
+    prompt = (
+        f"{assess_md}\n\n"
+        f"## Radar Positioning for “{title}”\n"
+        "Classify as **ACT**, **PREPARE**, or **WATCH** and justify briefly."
+    )
+    return call_llm(prompt, max_tokens=300)
+
+def pestel_driver(title, block_md):
+    prompt = (
+        f"{block_md}\n\n"
+        f"## PESTEL Trend Radar for “{title}”\n"
+        "Identify the primary driver (Political/Economic/Social/Technological/Ecological/Legal) and justify."
+    )
+    return call_llm(prompt, max_tokens=300)
+
+# ─── Save full conversation to MySQL ────────────────────────────────────────────
+def save_to_db(uc, sec, dem, trends_md, sel, ass_md, rad_md, pes_md):
+    conn = pymysql.connect(
+        host=DB_HOST, port=DB_PORT,
+        user=DB_USER, password=DB_PASSWORD,
+        database=DB_NAME, charset="utf8mb4"
+    )
+    cur = conn.cursor()
+    # ← UPDATED COLUMN NAMES TO MATCH YOUR SCHEMA
+    cur.execute("""
+        INSERT INTO trend_queries (
+            use_case,
+            sector,
+            demand,
+            selected_trend,
+            trend_solutions,
+            trend_assessment,
+            radar_positioning,
+            pestel_tag
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (uc, sec, dem, sel, trends_md, ass_md, rad_md, pes_md))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# ─── The chat endpoint ─────────────────────────────────────────────────────────
+@app.route("/", methods=["GET","POST"])
 def chat():
-    db = SessionLocal()
-    history = db.query(TrendQuery).order_by(TrendQuery.created_at.desc()).all()
-    messages = session.get('messages', [])
-    pending = session.get('pending')
+    # ---- debug prints ----
+    print("=== NEW REQUEST ===")
+    print("Method:", request.method)
+    print("Form data:", dict(request.form))
+    print("Session keys:", list(session.keys()))
+    print("LLM_PROVIDER:", LLM_PROVIDER)
+    if LLM_PROVIDER == "vertex":
+        print("Vertex project/model:", VERTEX_PROJECT, VERTEX_MODEL)
+    else:
+        print("OpenAI key OK?", bool(OPENAI_API_KEY))
 
-    if request.method == 'GET':
-        return render_template('index.html',
-                               history=history,
-                               messages=messages,
-                               conversation_started=bool(messages),
-                               history_mode=False,
-                               current_id=session.get('conv_id'))
+    # GET → clear & show form
+    if request.method == "GET":
+        session.clear()
+        return render_template("index.html", step1_done=False)
 
-    # POST: handle user input
-    user_input = request.form.get('message','').strip()
-    if not pending:
-        # Initial query: parse Use-case, Sector, Demand
-        parts = [p.strip() for p in user_input.split(',')]
-        if len(parts) < 3:
-            messages.append({'sender':'bot','text':
-                "❗ Please use the format: **Use-case, Sector, Demand**."})
-            session['messages'] = messages
-            db.close()
-            return render_template('index.html', history=history,
-                                   messages=messages, conversation_started=False,
-                                   history_mode=False, current_id=None)
-        use_case, sector, demand = parts[0], parts[1], ",".join(parts[2:]).strip()
-        # record user
-        messages = [{'sender':'user','text':f"{use_case}, {sector}, {demand}"}]
+    # STEP 1: capture the three inputs
+    if not session.get("step1_done"):
+        uc  = request.form.get("use_case","").strip()
+        sec = request.form.get("sector","").strip()
+        dem = request.form.get("demand","").strip()
+        if not (uc and sec and dem):
+            flash("Please fill in Use-case, Sector & Demand.","warning")
+            return redirect(url_for("chat"))
 
-        # Step 1: Trend Solutions
-        prompt1 = FIRST_PROMPT_TEMPLATE.format(use_case=use_case, sector=sector, demand=demand)
         try:
-            solutions_md = call_vertex_llm(prompt1)
-        except ResourceExhausted:
-            messages.append({'sender':'bot','text':
-                "⚠️ AI service busy. Please wait a few seconds and try sending again."})
-            session['messages'] = messages
-            db.close()
-            return render_template('index.html', history=history,
-                                   messages=messages, conversation_started=True,
-                                   history_mode=False, current_id=None)
+            raw_md = generate_trends(uc, sec, dem)
+        except Exception as e:
+            print("LLM Error:", e)
+            flash("Error generating trends; please try again later.","danger")
+            return redirect(url_for("chat"))
 
-        messages.append({'sender':'bot','text':solutions_md})
+        titles, blocks = split_trend_blocks(raw_md)
 
-        # Parse titles & descriptions
-        trend_blocks = re.split(r'##\s*Trend Title:', solutions_md)
-        titles = []
-        descs = []
-        for blk in trend_blocks[1:]:
-            # each blk starts with "<title>\n..."
-            lines = blk.splitlines()
-            title = lines[0].strip()
-            titles.append(title)
-            descs.append("\n".join(lines[1:]).strip())
-        # Store to DB
-        record = TrendQuery(use_case=use_case, sector=sector, demand=demand,
-                            trend_solutions=solutions_md)
-        db.add(record)
-        db.commit()
+        # rebuild with proper numbering
+        clean_md = ""
+        for i, t in enumerate(titles, start=1):
+            clean_md += f"### Trend {i}: {t}\n{blocks[i-1]}\n\n"
 
-        # Save session state
-        session['conv_id'] = record.id
-        session['trend_titles'] = titles
-        session['trend_descs']  = descs
-        session['messages']     = messages
+        session.update({
+            "step1_done": True,
+            "use_case": uc,
+            "sector": sec,
+            "demand": dem,
+            "titles": titles,
+            "blocks": blocks,
+            "trends_md": clean_md
+        })
 
-        # Ask next
-        messages.append({'sender':'bot','text':
-            "Would you like a **Comprehensive Trend Assessment** now? (Yes/No)"})
-        session['pending'] = 'assessment'
-        db.close()
-        return render_template('index.html', history=history,
-                               messages=messages, conversation_started=True,
-                               history_mode=False, current_id=record.id)
+        return render_template(
+            "index.html",
+            step1_done=True,
+            trends=markdown.markdown(clean_md),
+            titles=titles,
+            selected=None
+        )
 
-    # --- Pending follow-up questions ---
+    # STEP 2+: user picks one trend title
+    titles   = session["titles"]
+    blocks   = session["blocks"]
+    clean_md = session["trends_md"]
+    sel      = request.form.get("selected_trend")
 
-    answered_yes = user_input.lower() in ['yes','y','sure','ok']
-    messages.append({'sender':'user','text': 'Yes' if answered_yes else 'No'})
+    if sel not in titles:
+        flash("Select one of the three trends to dive deeper.","warning")
+        return render_template(
+            "index.html",
+            step1_done=True,
+            trends=markdown.markdown(clean_md),
+            titles=titles,
+            selected=None
+        )
 
-    if pending == 'assessment':
-        if answered_yes:
-            titles = session['trend_titles']
-            descs  = session['trend_descs']
-            # Batch assessment prompt
-            trends_md = ""
-            for t,d in zip(titles, descs):
-                trends_md += f"### {t}\n{d}\n\n"
-            prompt2 = ASSESS_PROMPT_TEMPLATE.format(trends_markdown=trends_md)
-            try:
-                assess_md = call_vertex_llm(prompt2)
-            except ResourceExhausted:
-                messages.append({'sender':'bot','text':
-                    "⚠️ AI service busy. Please wait a few seconds and click **Send** again."})
-                session['messages'] = messages
-                db.close()
-                return render_template('index.html', history=history,
-                                       messages=messages, conversation_started=True,
-                                       history_mode=False, current_id=session['conv_id'])
-            messages.append({'sender':'bot','text': assess_md})
-            # Extract average scores for DB
-            scores = re.findall(r'Score.*?:\s*([0-9]{1,2}(?:\.\d+)?)', assess_md)
-            record = db.query(TrendQuery).get(session['conv_id'])
-            record.trend_assessment = ", ".join(scores)
-            db.commit()
-        messages.append({'sender':'bot','text':
-            "Would you like **Radar Positioning** now? (Yes/No)"})
-        session['pending'] = 'radar'
-        session['messages'] = messages
-        db.close()
-        return render_template('index.html', history=history,
-                               messages=messages, conversation_started=True,
-                               history_mode=False, current_id=session['conv_id'])
+    idx      = titles.index(sel)
+    block_md = blocks[idx]
 
-    if pending == 'radar':
-        if answered_yes:
-            titles = session.get['trend_titles', []]
-            descs  = session.get['trend_descs']
-            if not descs:
-                rec = db.query(TrendQuery).get(session.get('conv_id'))
-                descs = []
-                parts = re.split(r'##\s*Trend Title:', rec.trend_solutions or "")
-                if parts and parts[0].strip()=="":
-                    parts = parts[1:]
-                for blk in parts:
-                    lines = blk.splitlines()
-                    descs.append("\n".join(lines[1:]).strip())
-                session['trend_descs'] = descs
-            trends_md = ""
-            for t,d in zip(titles, descs):
-                summary = d[:100].replace("\n"," ") + "..."
-                trends_md += f"- **{t}**: {summary}\n"
-            prompt3 = RADAR_PROMPT_TEMPLATE.format(trends_markdown=trends_md)
-            try:
-                radar_md = call_vertex_llm(prompt3)
-            except ResourceExhausted:
-                messages.append({'sender':'bot','text':
-                    "⚠️ AI service busy. Please wait a few seconds and click **Send** again."})
-                session['messages'] = messages
-                db.close()
-                return render_template('index.html', history=history,
-                                       messages=messages, conversation_started=True,
-                                       history_mode=False, current_id=session['conv_id'])
-            messages.append({'sender':'bot','text': radar_md})
-            cats = re.findall(r'\*\*(.*?)\*\*:\s*(ACT|PREPARE|WATCH)', radar_md)
-            record = db.query(TrendQuery).get(session['conv_id'])
-            record.radar_positioning = ", ".join([c[1] for c in cats])
-            db.commit()
-        messages.append({'sender':'bot','text':
-            "Finally, would you like the **PESTEL Trend Radar**? (Yes/No)"})
-        session['pending'] = 'pestel'
-        session['messages'] = messages
-        db.close()
-        return render_template('index.html', history=history,
-                               messages=messages, conversation_started=True,
-                               history_mode=False, current_id=session['conv_id'])
+    # Steps 2–4 in one go
+    ass_md = assess_trend(sel, block_md)
+    rad_md = radar_positioning(sel, ass_md)
+    pes_md = pestel_driver(sel, block_md)
 
-    if pending == 'pestel':
-        if answered_yes:
-            titles = session.get['trend_titles', []]
-            descs  = session.get['trend_descs']
-            if not descs:
-                rec = db.query(TrendQuery).get(session.get('conv_id'))
-                descs = []
-                parts = re.split(r'##\s*Trend Title:', rec.trend_solutions or "")
-                if parts and parts[0].strip()=="":
-                    parts = parts[1:]
-                for blk in parts:
-                    lines = blk.splitlines()
-                    descs.append("\n".join(lines[1:]).strip())
-                session['trend_descs'] = descs
-            trends_md = ""
-            for t,d in zip(titles, descs):
-                summary = d[:100].replace("\n"," ") + "..."
-                trends_md += f"- **{t}**: {summary}\n"
-            prompt4 = PESTEL_PROMPT_TEMPLATE.format(trends_markdown=trends_md)
-            try:
-                pestel_md = call_vertex_llm(prompt4)
-            except ResourceExhausted:
-                messages.append({'sender':'bot','text':
-                    "⚠️ AI service busy. Please wait a few seconds and click **Send** again."})
-                session['messages'] = messages
-                db.close()
-                return render_template('index.html', history=history,
-                                       messages=messages, conversation_started=True,
-                                       history_mode=False, current_id=session['conv_id'])
-            messages.append({'sender':'bot','text': pestel_md})
-            tags = re.findall(r'\*\*(.*?)\*\*:\s*(Political|Economic|Social|Technological|Ecological|Legal)', pestel_md)
-            record = db.query(TrendQuery).get(session['conv_id'])
-            record.pestel_tag = ", ".join([t[1] for t in tags])
-            db.commit()
-        # Done
-        session['pending'] = None
-        session['messages'] = messages
-        db.close()
-        return render_template('index.html', history=history,
-                               messages=messages, conversation_started=True,
-                               history_mode=False, current_id=session['conv_id'])
+    # persist
+    save_to_db(
+        session["use_case"],
+        session["sector"],
+        session["demand"],
+        clean_md,
+        sel,
+        ass_md,
+        rad_md,
+        pes_md
+    )
 
-@app.route('/conversation/<int:conv_id>')
-def view_conversation(conv_id):
-    db = SessionLocal()
-    record = db.query(TrendQuery).get(conv_id)
-    if not record:
-        db.close()
-        return redirect(url_for('chat'))
-    msgs = []
-    # Reconstruct conversation...
-    msgs.append({'sender':'user','text':f"{record.use_case}, {record.sector}, {record.demand}"})
-    msgs.append({'sender':'bot','text': record.trend_solutions})
-    msgs.append({'sender':'bot','text':
-        "Would you like a **Comprehensive Trend Assessment** now? (Yes/No)"})
-    if record.trend_assessment:
-        msgs.append({'sender':'user','text': 'Yes'})
-        # format as Markdown block
-        msgs.append({'sender':'bot','text': record.trend_assessment})
-    else:
-        msgs.append({'sender':'user','text': 'No'})
-    msgs.append({'sender':'bot','text':
-        "Would you like **Radar Positioning** now? (Yes/No)"})
-    if record.radar_positioning:
-        msgs.append({'sender':'user','text':'Yes'})
-        msgs.append({'sender':'bot','text': record.radar_positioning})
-    else:
-        msgs.append({'sender':'user','text':'No'})
-    msgs.append({'sender':'bot','text':
-        "Finally, would you like the **PESTEL Trend Radar**? (Yes/No)"})
-    if record.pestel_tag:
-        msgs.append({'sender':'user','text':'Yes'})
-        msgs.append({'sender':'bot','text': record.pestel_tag})
-    else:
-        msgs.append({'sender':'user','text':'No'})
-    db.close()
-    return render_template('index.html',
-                           history=db.query(TrendQuery).order_by(TrendQuery.created_at.desc()).all(),
-                           messages=msgs,
-                           conversation_started=True,
-                           history_mode=True,
-                           current_id=conv_id)
+    return render_template(
+        "index.html",
+        step1_done=True,
+        trends=markdown.markdown(clean_md),
+        titles=titles,
+        selected=sel,
+        assessment=markdown.markdown(ass_md),
+        radar=markdown.markdown(rad_md),
+        pestel=markdown.markdown(pes_md)
+    )
 
-@app.route('/new')
-def new_conversation():
-    session.clear()
-    return redirect(url_for('chat'))
-
-if __name__ == '__main__':
-    Base.metadata.create_all(engine)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)

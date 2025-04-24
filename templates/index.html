@@ -1,30 +1,72 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="welcome-card card mb-4 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title text-primary">🚀 Welcome to Mobility Insight Bot</h2>
-      <p class="card-text lead">
-        Hello there! I'm your friendly AI assistant, here to guide you through the latest <strong>mobility technology trends</strong>.
-        Simply enter your query in the format <code>[Use-case, Sector, Demand]</code> below, and I'll deliver:
-        <ul>
-          <li>Top technology trend solutions</li>
-          <li>Comprehensive assessments with data-driven scores</li>
-          <li>Priority radar positioning (ACT / PREPARE / WATCH)</li>
-          <li>Key PESTEL drivers</li>
-        </ul>
-        Let's drive innovation together! 🚚💡
-      </p>
-    </div>
-  </div>
+  <h1 class="mb-4">🚗 Mobility Insight Bot</h1>
 
-  <div id="chat-container">
-    {% for msg in messages %}
-      {% if msg.sender == 'user' %}
-        <div class="user-message">{{ msg.text|e }}</div>
-      {% else %}
-        <div class="bot-message" data-markdown="true">{{ msg.text }}</div>
-      {% endif %}
-    {% endfor %}
-    <div id="bottom-anchor"></div>
-  </div>
+  {% if not step1_done %}
+    <!-- Step 1: initial demand form -->
+    <form method="post" class="row g-3 mb-5">
+      <div class="col-md-4">
+        <input
+          type="text"
+          name="use_case"
+          class="form-control"
+          placeholder="Use-case (e.g. Last Mile)"
+          required
+        />
+      </div>
+      <div class="col-md-4">
+        <input
+          type="text"
+          name="sector"
+          class="form-control"
+          placeholder="Sector (e.g. Trucks)"
+          required
+        />
+      </div>
+      <div class="col-md-4">
+        <input
+          type="text"
+          name="demand"
+          class="form-control"
+          placeholder="Demand (e.g. Predictive Maintenance)"
+          required
+        />
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Generate Trends</button>
+      </div>
+    </form>
+
+  {% else %}
+    <!-- Display the 3 trends -->
+    <div class="mb-4">
+      {{ trends|safe }}
+    </div>
+
+    <!-- Step 2: choose one -->
+    <form method="post" class="mb-5">
+      <label for="selected_trend" class="form-label">Select one trend to dive deeper:</label>
+      <select name="selected_trend" id="selected_trend" class="form-select" required>
+        <option value="" disabled selected>-- pick a trend --</option>
+        {% for t in titles %}
+          <option value="{{ t }}" {% if t==selected %}selected{% endif %}>
+            {{ t }}
+          </option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-success mt-3">Assess Trend</button>
+    </form>
+
+    {% if selected %}
+      <hr/>
+      <h3>### Comprehensive Assessment for “{{ selected }}”</h3>
+      <div class="mb-4">{{ assessment|safe }}</div>
+
+      <h3>### Radar Positioning</h3>
+      <div class="mb-4">{{ radar|safe }}</div>
+
+      <h3>### PESTEL Trend Radar</h3>
+      <div class="mb-4">{{ pestel|safe }}</div>
+    {% endif %}
+  {% endif %}
 {% endblock %}
