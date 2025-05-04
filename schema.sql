@@ -8,6 +8,8 @@ CREATE TABLE `trend_queries` (
   `trend_assessment`  TEXT         NULL,
   `radar_positioning` TEXT         NULL,
   `pestel_tag`        TEXT         NULL,
+  `market_solution`   TEXT         NULL,
+  `partners`          TEXT         NULL,
   `created_at`        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

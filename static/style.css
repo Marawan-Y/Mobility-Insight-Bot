@@ -1,33 +1,45 @@
-/* Chat interface styling */
-.chat-container {
-  max-width: 800px;
-  margin: 0 auto;
+:root {
+  --schaeffler-green: #00B140;
+  --schaeffler-dark: #003826;
+  --schaeffler-light: #e6f4ea;
 }
-.chat-message {
-  display: flex;
+
+.schaeffler-header {
+  text-align: center;
+  padding: 2rem 0;
+  border-bottom: 3px solid var(--schaeffler-green);
+}
+
+.logo {
+  height: 60px;
   margin-bottom: 1rem;
 }
-.chat-message.user {
-  justify-content: flex-end;
+
+.btn-schaeffler {
+  background-color: var(--schaeffler-green);
+  color: white;
+  border-radius: 25px;
+  padding: 0.75rem 2rem;
+  transition: all 0.3s;
 }
-.chat-message.bot {
-  justify-content: flex-start;
+
+.btn-schaeffler:hover {
+  background-color: var(--schaeffler-dark);
+  color: white;
 }
-.chat-bubble {
-  display: inline-block;
-  padding: 10px 15px;
-  border-radius: 10px;
-  max-width: 70%;
-  line-height: 1.5;
-  white-space: pre-wrap;
+
+.form-select, .form-control {
+  border: 2px solid var(--schaeffler-green);
 }
-.chat-message.user .chat-bubble {
-  background-color: #007bff;
-  color: #fff;
-  border-bottom-right-radius: 0;
+
+.trends-container {
+  background: var(--schaeffler-light);
+  padding: 2rem;
+  border-radius: 15px;
 }
-.chat-message.bot .chat-bubble {
-  background-color: #e9ecef;
-  color: #000;
-  border-bottom-left-radius: 0;
+
+.validation-results h3 {
+  color: var(--schaeffler-green);
+  border-bottom: 2px solid;
+  padding-bottom: 0.5rem;
 }
