@@ -10,8 +10,29 @@ from flask import Flask, render_template, request, session, flash
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change_me")
-app.jinja_env.filters["markdown"] = md.markdown  # allow {{ text|markdown }}
+# app.jinja_env.filters["markdown"] = md.markdown  # allow {{ text|markdown }}
+# def render_markdown(text):
+#     # enable the “tables” (and fenced code, etc.) extensions
+#     return md.markdown(text or "", extensions=["tables", "fenced_code", "nl2br"])
+# app.jinja_env.filters["markdown"] = render_markdown
+def render_markdown(text):
+    # enable the "tables" (and fenced code, etc.) extensions
+    rendered_html = md.markdown(text or "", extensions=["tables", "fenced_code", "nl2br"])
+    
+    # Add inline CSS directly to the table element
+    table_style = 'style="border-collapse: collapse; width: 100%; margin-bottom: 1rem;"'
+    th_style = 'style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2; font-weight: bold;"'
+    td_style = 'style="border: 1px solid #ddd; padding: 8px; text-align: left;"'
+    
+    # Replace table tags with styled versions
+    rendered_html = rendered_html.replace("<table>", f'<table {table_style}>')
+    rendered_html = rendered_html.replace("<th>", f'<th {th_style}>')
+    rendered_html = rendered_html.replace("<td>", f'<td {td_style}>')
+    
+    return rendered_html
 
+# Add the filter to your Jinja environment
+app.jinja_env.filters["markdown"] = render_markdown
 # ─── Database Config ─────────────────────────────────────────────────────────
 DB_HOST     = os.getenv("DB_HOST", "localhost")
 DB_PORT     = int(os.getenv("DB_PORT", 3306))
@@ -20,11 +41,11 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "your_pass")
 DB_NAME     = os.getenv("DB_NAME", "mobility_bot")
 
 # ─── LLM Config ──────────────────────────────────────────────────────────────
-LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "openai").lower()
+LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "vertex").lower()
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
 VERTEX_PROJECT  = os.getenv("VERTEX_PROJECT")
 VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
-VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-1.0-pro")
+VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-2.5-pro")
 
 if LLM_PROVIDER == "vertex":
     import vertexai
