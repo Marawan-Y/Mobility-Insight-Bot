@@ -45,7 +45,7 @@ LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "vertex").lower()
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
 VERTEX_PROJECT  = os.getenv("VERTEX_PROJECT")
 VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
-VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-2.5-pro")
+VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-2.0-flash")
 
 if LLM_PROVIDER == "vertex":
     import vertexai
@@ -68,7 +68,7 @@ def call_llm(prompt, retries=3, delay=1.0, max_tokens=1500):
                 ).text.strip()
             else:
                 resp = openai_client.chat.completions.create(
-                    model="gpt-4-turbo",
+                    model="gpt-3.5-turbo",
                     messages=[{"role":"user","content":prompt}],
                     temperature=0.5,
                     max_tokens=max_tokens
@@ -257,3 +257,4 @@ def chat():
 
 if __name__ == "__main__":
     app.run(debug=True)
+    print("Flask app loaded key:", repr(os.getenv("OPENAI_API_KEY")))

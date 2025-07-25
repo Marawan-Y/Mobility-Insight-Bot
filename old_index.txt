@@ -76,7 +76,7 @@
       {% for i in range(session.remaining_trends|length) %}
         <div class="card mb-3">
           <div class="card-body">
-            <h5 class="card-title">Disruptive Technology {{ i+1 }}: {{ session.remaining_trends[i] }}</h5>
+            <h5 class="card-title">Trend {{ i+1 }}: {{ session.remaining_trends[i] }}</h5>
             <div>
               {{ session.blocks[ session.titles.index(session.remaining_trends[i]) ] 
                  | markdown | safe }}
@@ -87,27 +87,27 @@
     </div>
     <form method="post" class="row g-3 align-items-center mb-5">
       <div class="col-auto">
-        <label for="selected_trend_idx" class="col-form-label">Select disruptive technology:</label>
+        <label for="selected_trend_idx" class="col-form-label">Select trend:</label>
       </div>
       <div class="col-auto">
         <select name="selected_trend_idx" id="selected_trend_idx"
                 class="form-select" required>
           <option value="" disabled selected>-- pick one --</option>
           {% for i in range(session.remaining_trends|length) %}
-            <option value="{{ i }}">Disruptive Technology {{ i+1 }}: {{ session.remaining_trends[i] }}</option>
+            <option value="{{ i }}">Trend {{ i+1 }}: {{ session.remaining_trends[i] }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="col-auto">
         <button type="submit" name="action" value="validate"
                 class="btn btn-schaeffler">
-          Technology Validation
+          Trend Validation
         </button>
       </div>
       <div class="col-auto">
         <button type="submit" name="action" value="implement"
                 class="btn btn-schaeffler">
-          Technology Implementation
+          Trend Implementation
         </button>
       </div>
     </form>
@@ -116,19 +116,19 @@
   {# ─── Phase 3: Validation ───────────────────────────────────────────────── #}
   {% if phase == "validation" %}
     <div class="validation-results mb-4">
-      <h3>Validation for "{{ session.selected_trend }}"</h3>
+      <h3>Validation for “{{ session.selected_trend }}”</h3>
       <div>{{ session.validation_results[session.selected_trend].assessment 
                 | markdown | safe }}</div>
       <div class="mt-3">{{ session.validation_results[session.selected_trend].radar 
                            | markdown | safe }}</div>
-      <div class="mt-3">{{ session.validation_results[session.selected_trend].relation 
+      <div class="mt-3">{{ session.validation_results[session.selected_trend].pestel 
                            | markdown | safe }}</div>
     </div>
     <form method="post" class="d-flex gap-3 mb-5">
       {% if session.remaining_trends %}
         <button name="action" value="validate_more"
                 class="btn btn-outline-schaeffler">
-          Validate Another Technology
+          Validate Another Trend
         </button>
       {% endif %}
       <button name="action" value="implement"
@@ -141,7 +141,7 @@
   {# ─── Phase 4: Implementation ──────────────────────────────────────────── #}
   {% if phase == "implementation" %}
     <div class="implementation-results mb-4">
-      <h2>Market-Ready Technology</h2>
+      <h2>Market-Ready Solution</h2>
       <div>{{ session.market_solution | markdown | safe }}</div>
       <h2 class="mt-5">Strategic Partners</h2>
       <div>{{ session.partners | markdown | safe }}</div>
@@ -150,7 +150,7 @@
       {% if session.remaining_trends %}
         <button name="action" value="validate_more"
                 class="btn btn-outline-schaeffler">
-          Validate Another Technology
+          Validate Another Trend
         </button>
       {% endif %}
     </form>
