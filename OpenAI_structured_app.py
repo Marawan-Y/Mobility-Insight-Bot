@@ -9,14 +9,14 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, session, flash
 import openai
 from openai import OpenAI, RateLimitError
-
+from markupsafe import Markup
 # ─── Flask & Jinja Setup ────────────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change_me")
 
 # Feedback form URL: set this environment variable or edit directly to your Google Form link
-FEEDBACK_FORM_URL = os.getenv("FEEDBACK_FORM_URL", "https://forms.gle/your_form_link")
+FEEDBACK_FORM_URL = os.getenv("FEEDBACK_FORM_URL", "https://docs.google.com/forms/d/e/1FAIpQLSfT5gGcFuzE_9O1Vca545YmJ83wwzDy-4ZEoerhILOuyNmKWw/viewform?usp=header")
 
 def append_feedback(content: str) -> str:
     """Append a user feedback request section to the generated content."""
