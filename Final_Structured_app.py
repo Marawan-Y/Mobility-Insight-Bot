@@ -11,6 +11,25 @@ import openai
 from openai import OpenAI, RateLimitError
 from markupsafe import Markup
 
+from session_manager import session_manager
+
+# Add these helper functions after your other utility functions
+def save_large_session_data(session, key, data):
+    """Save large data to file and store reference in session"""
+    session_id = session.get('session_id', 'unknown')
+    session_data = session_manager.load_session_data(session_id)
+    session_data[key] = data
+    session_manager.save_session_data(session_id, session_data)
+    session[f"{key}_ref"] = True  # Just store a reference
+
+def load_large_session_data(session, key):
+    """Load large data from file using session reference"""
+    if session.get(f"{key}_ref"):
+        session_id = session.get('session_id', 'unknown')
+        session_data = session_manager.load_session_data(session_id)
+        return session_data.get(key)
+    return session.get(key)  # Fallback to session if not in file
+
 # ─── Flask & Jinja Setup ────────────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)

@@ -1,0 +1,26 @@
+APPLICATION:
+
+1- session_manager.py >> Handling Session Cookie, Implement file-based session storage for large data
+2- fix_database.py >> insure database structure is correct
+3- config.py >> Performance optimization for better configuration management
+4- logger_config.py >> Logging Improvements, Implement file-based session storage for large data
+5- error_handler.py >> Error Recovery Improvements, Implement file-based session storage for large data
+6- template/error.html >> Error Template    
+7- health_check.py >> Application Health Check, Verify system components before running
+8- bin/setup.bat >> Quick Application setup
+
+--------------------------------------------------------------------------------------------------------
+
+MYSQL Server Database:
+
+1- bin/validate_mysql_server.py >> Test Server Setup
+2- bin/export_local_db.py >> Migrate Local Database to Server
+3- bin/import_to_server.py >> Import to Server Database
+4- bin/validate_migration.py >> Complete Migration Test Validation
+5- .env.server >> Configure Application for Server Database
+6- bin/config_manager.py >> Configuration Switcher between local and server
+7- bin/validate_app_connection.py >> Test Application with Server DB Validation
+8- bin/setup_remote_access.py >> Setup Remote Access
+9- bin/validate_complete_setup.py >> Complete System Test Validation
+10- bin/security_check.py >> Server Security Check
+11- bin/backup_automation.py >> Backup Automation Configuration 
