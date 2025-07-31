@@ -2,7 +2,8 @@
 import os, re, time
 from datetime import datetime
 from contextlib import contextmanager
-
+from sqlalchemy import create_engine
+from urllib.parse import quote_plus
 import pymysql
 import markdown as md
 from dotenv import load_dotenv
@@ -92,6 +93,29 @@ DB_USER     = os.getenv("DB_USER", "your_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "your_pass")
 DB_NAME     = os.getenv("DB_NAME", "mobility_bot")
 
+# --- SQLAlchemy engine (pool) using PyMySQL ---
+DB_POOL_SIZE   = int(os.getenv("DB_POOL_SIZE", 8))
+DB_MAX_OVER    = int(os.getenv("DB_MAX_OVERFLOW", 2))
+DB_POOL_RECYCLE= int(os.getenv("DB_POOL_RECYCLE", 1800))  # seconds
+
+# URL-encode password for a safe DSN (handles special chars like !, #, @)
+_pw = quote_plus(DB_PASSWORD)
+dsn = f"mysql+pymysql://{DB_USER}:{_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
+
+engine = create_engine(
+    dsn,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVER,
+    pool_pre_ping=True,          # drops dead conns automatically
+    pool_recycle=DB_POOL_RECYCLE, # refresh conns periodically
+    connect_args={
+        "connect_timeout": 5,    # TCP connect timeout (seconds)
+        "read_timeout": 10,      # server read timeout
+        "write_timeout": 10      # client write timeout
+    }
+)
+
+
 # ─── LLM Config ─────────────────────────────────────────────────────────────
 LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "openai").lower()
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
@@ -109,23 +133,54 @@ else:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ─── Database Connection Context Manager ────────────────────────────────────
+# # -- Local connection pooling --
+# @contextmanager
+# def get_db_connection():
+#     conn = None
+#     try:
+#         conn = pymysql.connect(
+#             host=DB_HOST, port=DB_PORT, user=DB_USER,
+#             password=DB_PASSWORD, database=DB_NAME,
+#             charset="utf8mb4"
+#         )
+#         yield conn
+#     except Exception as e:
+#         if conn:
+#             conn.rollback()
+#         raise
+#     finally:
+#         if conn:
+#             conn.close()
+
+# --Server -side connection pooling with context manager--
 @contextmanager
 def get_db_connection():
     conn = None
     try:
-        conn = pymysql.connect(
-            host=DB_HOST, port=DB_PORT, user=DB_USER,
-            password=DB_PASSWORD, database=DB_NAME,
-            charset="utf8mb4"
-        )
+        # raw_connection() returns a DB-API connection (PyMySQL) from the pool
+        conn = engine.raw_connection()
+        # Optional safety on reuse
+        try:
+            conn.ping(reconnect=True)
+        except Exception:
+            # Force renewal if ping fails
+            conn.close()
+            conn = engine.raw_connection()
         yield conn
-    except Exception as e:
+        conn.commit()
+    except Exception:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         raise
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()  # returns it to the pool
+            except Exception:
+                pass
 
 # ─── Universal LLM helper (optimized with better prompting) ─────────────────
 def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
