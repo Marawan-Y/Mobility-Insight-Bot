@@ -206,7 +206,7 @@ CRITICAL INSTRUCTIONS:
 6. Never repeat the prompt back - only provide the requested analysis"""
 
             resp = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4-turbo",
                 # model="gpt-4" if "gpt-4" in os.getenv("OPENAI_MODEL", "gpt-3.5-turbo") else "gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},

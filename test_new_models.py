@@ -14,6 +14,9 @@ from markupsafe import Markup
 
 from session_manager import session_manager
 
+# >>> NEW: assessment writer import <<<
+from assessment_write import write_trial_row  # logs runs for the Streamlit dashboard
+
 # Add these helper functions after your other utility functions
 def save_large_session_data(session, key, data):
     """Save large data to file and store reference in session"""
@@ -132,6 +135,10 @@ if LLM_PROVIDER == "vertex":
 else:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+# >>> NEW: global counters for dashboard metrics <<<
+API_CALL_COUNT = 0
+TOTAL_OUTPUT_TOKENS = 0
+
 # ─── Database Connection Context Manager ────────────────────────────────────
 # # -- Local connection pooling --
 # @contextmanager
@@ -185,14 +192,19 @@ def get_db_connection():
 # ─── Universal LLM helper (optimized with better prompting) ─────────────────
 def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
              max_tokens: int = 2000) -> str:  # Increased max_tokens
+    global API_CALL_COUNT, TOTAL_OUTPUT_TOKENS  # >>> NEW for metrics <<<
     for attempt in range(retries):
         try:
             if LLM_PROVIDER == "vertex":
+                # Count call even for Vertex
+                API_CALL_COUNT = API_CALL_COUNT + 1
                 vertexai.init(project=VERTEX_PROJECT, location=VERTEX_LOCATION)
                 model = GenerativeModel(model_name=VERTEX_MODEL)
-                return model.generate_content(
+                out = model.generate_content(
                     prompt, temperature=0.3, max_output_tokens=max_tokens  # Lower temperature
                 ).text.strip()
+                # Vertex SDK may not include token usage; leave TOTAL_OUTPUT_TOKENS unchanged
+                return out
             
             # Enhanced system prompt for better responses
             system_prompt = """You are a Schaeffler strategic innovation analyst with deep expertise in motion technology, precision components, mechatronics, and thermal management. 
@@ -205,9 +217,9 @@ CRITICAL INSTRUCTIONS:
 5. Format tables properly with complete data in all cells
 6. Never repeat the prompt back - only provide the requested analysis"""
 
+            API_CALL_COUNT = API_CALL_COUNT + 1  # >>> NEW count API call
             resp = openai_client.chat.completions.create(
-                model="gpt-4.1-mini",  # Use a more capable model
-                # model="gpt-4" if "gpt-4" in os.getenv("OPENAI_MODEL", "gpt-3.5-turbo") else "gpt-3.5-turbo",
+                model="gpt-4-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -216,6 +228,23 @@ CRITICAL INSTRUCTIONS:
                 max_tokens=max_tokens,
                 timeout=60  # Increased timeout
             )
+            # >>> NEW: capture tokens robustly
+            try:
+                u = getattr(resp, "usage", None)
+                if u:
+                    # support both dict-like and attr-like
+                    comp = getattr(u, "completion_tokens", None)
+                    tot = getattr(u, "total_tokens", None)
+                    if isinstance(u, dict):
+                        comp = u.get("completion_tokens", comp)
+                        tot = u.get("total_tokens", tot)
+                    if comp is None and tot is not None:
+                        comp = tot  # fallback
+                    if comp:
+                        TOTAL_OUTPUT_TOKENS = TOTAL_OUTPUT_TOKENS + int(comp)
+            except Exception:
+                pass
+
             return resp.choices[0].message.content.strip()
         except Exception as e:
             print(f"LLM attempt {attempt+1} failed: {e}")
@@ -867,6 +896,11 @@ def chat():
                 return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
 
             print("DEBUG: Form validation passed, calling generate_trends...")
+            # >>> NEW: stopwatch + counters snapshot for trends generation <<<
+            start_ms = time.time()
+            pre_calls = globals().get("API_CALL_COUNT", 0)
+            pre_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0)
+
             raw = generate_trends(uc, sec, dem)
             print(f"DEBUG: generate_trends returned: {len(raw) if raw else 0} characters")
            
@@ -886,6 +920,22 @@ def chat():
                                    for i, t in enumerate(titles))
            
             print(f"DEBUG: Final trends_md length: {len(trends_md)}")
+
+            # >>> NEW: log trial row for dashboard (trends stage) <<<
+            delta_calls = globals().get("API_CALL_COUNT", 0) - pre_calls
+            delta_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0) - pre_tokens
+            try:
+                write_trial_row(
+                    use_case=uc,
+                    sector=sec,
+                    demand=dem,
+                    raw_markdown=trends_md,
+                    latency_ms=(time.time() - start_ms) * 1000.0,
+                    token_count=delta_tokens if delta_tokens > 0 else 0,
+                    api_calls=delta_calls if delta_calls > 0 else 1,  # at least 1
+                )
+            except Exception as e:
+                print(f"WARNING: failed to write assessment trial (trends): {e}")
 
             session.update({
                 "step": "scouting",
@@ -926,9 +976,32 @@ def chat():
 
             if action == "validate":
                 print(f"DEBUG: Validating trend: {sel}")
+                # >>> NEW: stopwatch + counters snapshot for validation stage <<<
+                start_ms = time.time()
+                pre_calls = globals().get("API_CALL_COUNT", 0)
+                pre_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0)
+
                 ass = assess_trend(sel, block)
                 rad = radar_positioning(sel, ass)
                 rel = relation_criteria(sel, block)
+
+                # >>> NEW: log validation composite output
+                final_validation_md = f"## Assessment\n{ass}\n\n## Radar Positioning\n{rad}\n\n## Innovation Classification\n{rel}"
+                delta_calls = globals().get("API_CALL_COUNT", 0) - pre_calls
+                delta_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0) - pre_tokens
+                try:
+                    write_trial_row(
+                        use_case=session.get("use_case", ""),
+                        sector=session.get("sector", ""),
+                        demand=session.get("demand", ""),
+                        raw_markdown=final_validation_md,
+                        latency_ms=(time.time() - start_ms) * 1000.0,
+                        token_count=delta_tokens if delta_tokens > 0 else 0,
+                        api_calls=delta_calls if delta_calls > 0 else 1,
+                    )
+                except Exception as e:
+                    print(f"WARNING: failed to write assessment trial (validation): {e}")
+
                 session["validation_results"][sel] = {
                     "assessment": ass, "radar": rad, "relation": rel
                 }
@@ -937,8 +1010,31 @@ def chat():
 
             # Direct implementation
             print(f"DEBUG: Direct implementation for trend: {sel}")
+            # >>> NEW: stopwatch + counters snapshot for implementation stage <<<
+            start_ms = time.time()
+            pre_calls = globals().get("API_CALL_COUNT", 0)
+            pre_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0)
+
             msol = market_ready_solution(sel, block, session.get("sector", ""))
             prts = partners_navigation(sel, block)
+
+            # >>> NEW: log implementation composite output
+            final_impl_md = f"## Market-Ready Solution\n{msol}\n\n## Partnerships Plan\n{prts}"
+            delta_calls = globals().get("API_CALL_COUNT", 0) - pre_calls
+            delta_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0) - pre_tokens
+            try:
+                write_trial_row(
+                    use_case=session.get("use_case", ""),
+                    sector=session.get("sector", ""),
+                    demand=session.get("demand", ""),
+                    raw_markdown=final_impl_md,
+                    latency_ms=(time.time() - start_ms) * 1000.0,
+                    token_count=delta_tokens if delta_tokens > 0 else 0,
+                    api_calls=delta_calls if delta_calls > 0 else 1,
+                )
+            except Exception as e:
+                print(f"WARNING: failed to write assessment trial (implementation-direct): {e}")
+
             save_to_db(session["use_case"], session["sector"], session["demand"],
                        session["trends_md"], sel, "", "", "",
                        msol, prts, titles, blocks)
@@ -967,8 +1063,31 @@ def chat():
 
             # Proceed to implementation
             print(f"DEBUG: Proceeding to implementation for trend: {sel}")
+            # >>> NEW: stopwatch + counters snapshot for implementation (after validation) <<<
+            start_ms = time.time()
+            pre_calls = globals().get("API_CALL_COUNT", 0)
+            pre_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0)
+
             msol = market_ready_solution(sel, block, session.get("sector", ""))
             prts = partners_navigation(sel, block)
+
+            # >>> NEW: log implementation composite output
+            final_impl_md = f"## Market-Ready Solution\n{msol}\n\n## Partnerships Plan\n{prts}"
+            delta_calls = globals().get("API_CALL_COUNT", 0) - pre_calls
+            delta_tokens = globals().get("TOTAL_OUTPUT_TOKENS", 0) - pre_tokens
+            try:
+                write_trial_row(
+                    use_case=session.get("use_case", ""),
+                    sector=session.get("sector", ""),
+                    demand=session.get("demand", ""),
+                    raw_markdown=final_impl_md,
+                    latency_ms=(time.time() - start_ms) * 1000.0,
+                    token_count=delta_tokens if delta_tokens > 0 else 0,
+                    api_calls=delta_calls if delta_calls > 0 else 1,
+                )
+            except Exception as e:
+                print(f"WARNING: failed to write assessment trial (implementation-after-validation): {e}")
+
             vr = session["validation_results"].get(sel, {})
             save_to_db(session["use_case"], session["sector"], session["demand"],
                        session["trends_md"], sel,

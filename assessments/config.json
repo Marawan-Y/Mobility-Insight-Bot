@@ -1,0 +1,17 @@
+[
+    {
+        "use_case": "People mover mobility",
+        "sector": "RoboTaxi",
+        "demand": "navigation"
+    },
+    {
+        "use_case": "Cargo transportation",
+        "sector": "Autonomous trucks",
+        "demand": "efficiency"
+    },
+    {
+        "use_case": "Last-mile delivery",
+        "sector": "Delivery robots",
+        "demand": "reliability"
+    }
+]

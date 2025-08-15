@@ -1,0 +1,21 @@
+{
+    "assessment": {
+        "default_trials": 5,
+        "trial_delay_seconds": 2,
+        "max_retries": 3
+    },
+    "thresholds": {
+        "diversity": {
+            "min_acceptable": 0.5,
+            "target": 0.7
+        },
+        "compliance": {
+            "min_acceptable": 0.8,
+            "target": 0.95
+        },
+        "performance": {
+            "max_latency_ms": 30000,
+            "max_tokens": 3000
+        }
+    }
+}
