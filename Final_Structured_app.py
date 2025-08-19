@@ -11,7 +11,8 @@ from flask import Flask, render_template, request, session, flash
 import openai
 from openai import OpenAI, RateLimitError
 from markupsafe import Markup
-
+import time
+from assessment_write import write_trial_row
 from session_manager import session_manager
 
 # Add these helper functions after your other utility functions
@@ -133,54 +134,54 @@ else:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ─── Database Connection Context Manager ────────────────────────────────────
-# # -- Local connection pooling --
-# @contextmanager
-# def get_db_connection():
-#     conn = None
-#     try:
-#         conn = pymysql.connect(
-#             host=DB_HOST, port=DB_PORT, user=DB_USER,
-#             password=DB_PASSWORD, database=DB_NAME,
-#             charset="utf8mb4"
-#         )
-#         yield conn
-#     except Exception as e:
-#         if conn:
-#             conn.rollback()
-#         raise
-#     finally:
-#         if conn:
-#             conn.close()
-
-# --Server -side connection pooling with context manager--
+# -- Local connection pooling --
 @contextmanager
 def get_db_connection():
     conn = None
     try:
-        # raw_connection() returns a DB-API connection (PyMySQL) from the pool
-        conn = engine.raw_connection()
-        # Optional safety on reuse
-        try:
-            conn.ping(reconnect=True)
-        except Exception:
-            # Force renewal if ping fails
-            conn.close()
-            conn = engine.raw_connection()
+        conn = pymysql.connect(
+            host=DB_HOST, port=DB_PORT, user=DB_USER,
+            password=DB_PASSWORD, database=DB_NAME,
+            charset="utf8mb4"
+        )
         yield conn
-        conn.commit()
-    except Exception:
+    except Exception as e:
         if conn:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
+            conn.rollback()
         raise
     finally:
         if conn:
-            try:
-                conn.close()  # returns it to the pool
-            except Exception:
-                pass
+            conn.close()
+
+# # --Server -side connection pooling with context manager--
+# @contextmanager
+# def get_db_connection():
+#     conn = None
+#     try:
+#         # raw_connection() returns a DB-API connection (PyMySQL) from the pool
+#         conn = engine.raw_connection()
+#         # Optional safety on reuse
+#         try:
+#             conn.ping(reconnect=True)
+#         except Exception:
+#             # Force renewal if ping fails
+#             conn.close()
+#             conn = engine.raw_connection()
+#         yield conn
+#         conn.commit()
+#     except Exception:
+#         if conn:
+#             try:
+#                 conn.rollback()
+#             except Exception:
+#                 pass
+#         raise
+#     finally:
+#         if conn:
+#             try:
+#                 conn.close()  # returns it to the pool
+#             except Exception:
+#                 pass
 
 # ─── Universal LLM helper (optimized with better prompting) ─────────────────
 def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
