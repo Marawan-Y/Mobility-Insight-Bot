@@ -118,3 +118,7 @@ Security & Maintenance ✓
  Monitoring in place
  Recovery plan documented
  -------------------------------------------------------------------------------------------------------------------------------------------------------
+mysql -u root -p%MYSQL_ROOT_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS mobility_bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p%MYSQL_ROOT_PASSWORD% -e "CREATE USER IF NOT EXISTS 'mobility_user'@'localhost' IDENTIFIED BY '%DB_PASSWORD%';"
+mysql -u root -p%MYSQL_ROOT_PASSWORD% -e "GRANT ALL PRIVILEGES ON mobility_bot.* TO 'mobility_user'@'localhost';"
+mysql -u root -p%MYSQL_ROOT_PASSWORD% -e "FLUSH PRIVILEGES;"

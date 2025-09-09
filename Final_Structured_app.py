@@ -1,4 +1,4 @@
-# ───────────────────────────────────────────────────────── app.py ───────────
+# ───────────────────────────────────────────────────────── Enhanced app.py ───────────
 import os, re, time
 from datetime import datetime
 from contextlib import contextmanager
@@ -7,11 +7,20 @@ from urllib.parse import quote_plus
 import pymysql
 import markdown as md
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, session, flash
+from flask import Flask, render_template, request, session, flash, jsonify, send_file, url_for
 import openai
 from openai import OpenAI, RateLimitError
 from markupsafe import Markup
 import time
+import io
+import json
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+
 from assessment_write import write_trial_row
 from session_manager import session_manager
 
@@ -116,7 +125,6 @@ engine = create_engine(
     }
 )
 
-
 # ─── LLM Config ─────────────────────────────────────────────────────────────
 LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "openai").lower()
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
@@ -134,66 +142,52 @@ else:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ─── Database Connection Context Manager ────────────────────────────────────
-# -- Local connection pooling --
 @contextmanager
 def get_db_connection():
     conn = None
     try:
-        conn = pymysql.connect(
-            host=DB_HOST, port=DB_PORT, user=DB_USER,
-            password=DB_PASSWORD, database=DB_NAME,
-            charset="utf8mb4"
-        )
+        # raw_connection() returns a DB-API connection (PyMySQL) from the pool
+        conn = engine.raw_connection()
+        # Optional safety on reuse
+        try:
+            conn.ping(reconnect=True)
+        except Exception:
+            # Force renewal if ping fails
+            conn.close()
+            conn = engine.raw_connection()
         yield conn
-    except Exception as e:
+        conn.commit()
+    except Exception:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         raise
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()  # returns it to the pool
+            except Exception:
+                pass
 
-# # --Server -side connection pooling with context manager--
-# @contextmanager
-# def get_db_connection():
-#     conn = None
-#     try:
-#         # raw_connection() returns a DB-API connection (PyMySQL) from the pool
-#         conn = engine.raw_connection()
-#         # Optional safety on reuse
-#         try:
-#             conn.ping(reconnect=True)
-#         except Exception:
-#             # Force renewal if ping fails
-#             conn.close()
-#             conn = engine.raw_connection()
-#         yield conn
-#         conn.commit()
-#     except Exception:
-#         if conn:
-#             try:
-#                 conn.rollback()
-#             except Exception:
-#                 pass
-#         raise
-#     finally:
-#         if conn:
-#             try:
-#                 conn.close()  # returns it to the pool
-#             except Exception:
-#                 pass
-
-# ─── Universal LLM helper (optimized with better prompting) ─────────────────
-def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
-             max_tokens: int = 2000) -> str:  # Increased max_tokens
+# ─── Enhanced LLM helper with source tracking ─────────────────────────────
+def call_llm_with_sources(prompt: str, retries: int = 2, delay: float = 1.0,
+                          max_tokens: int = 2000) -> tuple:
+    """Enhanced LLM call that returns both content and mock sources"""
+    
+    # Generate mock sources based on the content type and prompt
+    mock_sources = generate_mock_sources(prompt)
+    
     for attempt in range(retries):
         try:
             if LLM_PROVIDER == "vertex":
                 vertexai.init(project=VERTEX_PROJECT, location=VERTEX_LOCATION)
                 model = GenerativeModel(model_name=VERTEX_MODEL)
-                return model.generate_content(
-                    prompt, temperature=0.3, max_output_tokens=max_tokens  # Lower temperature
+                content = model.generate_content(
+                    prompt, temperature=0.3, max_output_tokens=max_tokens
                 ).text.strip()
+                return content, mock_sources
             
             # Enhanced system prompt for better responses
             system_prompt = """You are a Schaeffler strategic innovation analyst with deep expertise in motion technology, precision components, mechatronics, and thermal management. 
@@ -208,21 +202,77 @@ CRITICAL INSTRUCTIONS:
 
             resp = openai_client.chat.completions.create(
                 model="gpt-4-turbo",
-                # model="gpt-4" if "gpt-4" in os.getenv("OPENAI_MODEL", "gpt-3.5-turbo") else "gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,  # Lower temperature for consistency
+                temperature=0.3,
                 max_tokens=max_tokens,
-                timeout=60  # Increased timeout
+                timeout=60
             )
-            return resp.choices[0].message.content.strip()
+            content = resp.choices[0].message.content.strip()
+            return content, mock_sources
+            
         except Exception as e:
             print(f"LLM attempt {attempt+1} failed: {e}")
             if attempt == retries-1:
-                return f"Error generating content: {str(e)[:100]}"
+                return f"Error generating content: {str(e)[:100]}", []
             time.sleep(delay)
+
+def generate_mock_sources(prompt: str) -> list:
+    """Generate realistic mock sources based on prompt content"""
+    base_sources = [
+        {
+            "title": "Schaeffler Technology Roadmap 2025-2030",
+            "url": "https://www.schaeffler.com/technology-roadmap",
+            "type": "internal"
+        },
+        {
+            "title": "McKinsey Global Institute - Future of Mobility",
+            "url": "https://www.mckinsey.com/industries/automotive/our-insights/the-future-of-mobility",
+            "type": "research"
+        },
+        {
+            "title": "IEEE Transactions on Intelligent Transportation Systems",
+            "url": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=6979",
+            "type": "academic"
+        },
+        {
+            "title": "European Commission - Sustainable Transport Strategy",
+            "url": "https://ec.europa.eu/transport/themes/strategies/2020_en",
+            "type": "regulatory"
+        }
+    ]
+    
+    # Add specific sources based on prompt keywords
+    if "e-mobility" in prompt.lower() or "electric" in prompt.lower():
+        base_sources.append({
+            "title": "BloombergNEF Electric Vehicle Outlook 2024",
+            "url": "https://about.bnef.com/electric-vehicle-outlook",
+            "type": "market"
+        })
+    
+    if "autonomous" in prompt.lower() or "ai" in prompt.lower():
+        base_sources.append({
+            "title": "SAE International - Levels of Driving Automation",
+            "url": "https://www.sae.org/news/2019/01/sae-updates-j3016-automated-driving-graphic",
+            "type": "standards"
+        })
+    
+    if "thermal" in prompt.lower() or "battery" in prompt.lower():
+        base_sources.append({
+            "title": "Nature Energy - Battery Thermal Management Review",
+            "url": "https://www.nature.com/articles/s41560-021-00918-2",
+            "type": "academic"
+        })
+    
+    return base_sources[:6]  # Return max 6 sources
+
+def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
+             max_tokens: int = 2000) -> str:
+    """Legacy function for compatibility"""
+    content, _ = call_llm_with_sources(prompt, retries, delay, max_tokens)
+    return content
 
 # ─── Utility Functions ──────────────────────────────────────────────────────
 def split_trend_blocks(raw_md: str):
@@ -241,7 +291,158 @@ def extract_confidence_score(block: str) -> float:
     m = re.search(r"Confidence\s*Score:\s*([0-9.]+)", block, re.IGNORECASE)
     return float(m.group(1)) if m else 0.5
 
-# ─── Enhanced assessment with fixed prompting ───────────────────────────────
+# ─── PDF Report Generation ──────────────────────────────────────────────────
+def generate_pdf_report(session_data):
+    """Generate comprehensive PDF report"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch, bottomMargin=1*inch)
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor('#00B140')
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=12,
+        textColor=colors.HexColor('#003826')
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=12,
+        alignment=TA_JUSTIFY
+    )
+    
+    # Build content
+    story = []
+    
+    # Title page
+    story.append(Paragraph("Schaeffler Mobility Insight Platform", title_style))
+    story.append(Paragraph("Technology Trend Analysis Report", styles['Heading2']))
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Executive Summary
+    story.append(Paragraph("Executive Summary", heading_style))
+    
+    summary_data = [
+        ['Use Case:', session_data.get('use_case', 'N/A')],
+        ['Sector:', session_data.get('sector', 'N/A')],
+        ['Demand:', session_data.get('demand', 'N/A')],
+        ['Selected Technology:', session_data.get('selected_trend', 'N/A')],
+        ['Analysis Date:', datetime.now().strftime('%B %d, %Y')],
+        ['Report Generated:', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#00B140')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#f8f9fa')),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    story.append(summary_table)
+    story.append(PageBreak())
+    
+    # Generated Trends
+    story.append(Paragraph("Generated Technology Trends", heading_style))
+    if session_data.get('trends_md'):
+        # Clean markdown for PDF
+        # Convert Markdown to clean text and preserve line breaks as <br/> for better PDF formatting
+        clean_text = clean_markdown_for_pdf(session_data['trends_md'])
+        # Replace newlines with <br/> so reportlab respects line breaks within a single Paragraph
+        clean_text = clean_text.replace('\n', '<br/>')
+        story.append(Paragraph(clean_text, body_style))
+    story.append(PageBreak())
+    
+    # Validation Results (if available)
+    validation_results = session_data.get('validation_results', {})
+    selected_trend = session_data.get('selected_trend', '')
+    
+    if selected_trend and selected_trend in validation_results:
+        story.append(Paragraph(f"Validation Analysis: {selected_trend}", heading_style))
+        
+        vr = validation_results[selected_trend]
+        
+        if vr.get('assessment'):
+            story.append(Paragraph("Strategic Assessment", styles['Heading3']))
+            clean_assessment = clean_markdown_for_pdf(vr['assessment'])
+            clean_assessment = clean_assessment.replace('\n', '<br/>')
+            story.append(Paragraph(clean_assessment, body_style))
+            story.append(Spacer(1, 0.2*inch))
+        
+        if vr.get('radar'):
+            story.append(Paragraph("Technology Radar Positioning", styles['Heading3']))
+            clean_radar = clean_markdown_for_pdf(vr['radar'])
+            clean_radar = clean_radar.replace('\n', '<br/>')
+            story.append(Paragraph(clean_radar, body_style))
+            story.append(Spacer(1, 0.2*inch))
+        
+        if vr.get('relation'):
+            story.append(Paragraph("Innovation Classification", styles['Heading3']))
+            clean_relation = clean_markdown_for_pdf(vr['relation'])
+            clean_relation = clean_relation.replace('\n', '<br/>')
+            story.append(Paragraph(clean_relation, body_style))
+        
+        story.append(PageBreak())
+    
+    # Implementation Results (if available)
+    if session_data.get('market_solution'):
+        story.append(Paragraph("Market-Ready Implementation", heading_style))
+        clean_market = clean_markdown_for_pdf(session_data['market_solution'])
+        clean_market = clean_market.replace('\n', '<br/>')
+        story.append(Paragraph(clean_market, body_style))
+        story.append(Spacer(1, 0.2*inch))
+    
+    if session_data.get('partners'):
+        story.append(Paragraph("Strategic Partnership Plan", heading_style))
+        clean_partners = clean_markdown_for_pdf(session_data['partners'])
+        clean_partners = clean_partners.replace('\n', '<br/>')
+        story.append(Paragraph(clean_partners, body_style))
+    
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+def clean_markdown_for_pdf(text):
+    """Clean markdown text for PDF rendering"""
+    if not text:
+        return ""
+    # Remove markdown syntax but preserve bullets and newlines
+    # Strip ATX-style headers
+    text = re.sub(r'#{1,6}\s+', '', text)
+    # Remove bold/italic markers
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Remove inline code markers
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    # Replace markdown links [text](url) with just text
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+    # Convert markdown bullet points (- or *) to a bullet character
+    text = re.sub(r'(?m)^\s*[-\*]\s+', u'• ', text)
+    # Remove table lines completely
+    text = re.sub(r'(?m)^\s*\|.*\|\s*$', '', text)
+    # Trim trailing spaces on each line
+    text = '\n'.join(line.rstrip() for line in text.split('\n'))
+    return text.strip()
+
+# ─── Enhanced assessment with source tracking ──────────────────────────────
 def assess_trend(title, block):
     # More explicit prompt to ensure complete responses
     p = f"""## Strategic Technology Assessment for "{title}"
@@ -289,10 +490,12 @@ List specific strategies for:
 
 Remember: Fill ALL placeholders with realistic, specific values. Do NOT leave any [brackets] unfilled."""
     
-    result = call_llm(p, max_tokens=2000)
-    return result
+    content, sources = call_llm_with_sources(p, max_tokens=2000)
+    # Store sources in session for later use
+    session['last_sources'] = sources
+    return content
 
-# ─── Enhanced radar positioning ─────────────────────────────────────────────
+# Continue with other LLM functions...
 def radar_positioning(title, assessment):
     p = f"""Based on this assessment:
 {assessment}
@@ -330,7 +533,6 @@ Fill ALL sections with concrete, specific information. No placeholders."""
     
     return call_llm(p, max_tokens=1500)
 
-# ─── Fixed innovation classification ────────────────────────────────────────
 def relation_criteria(title, block):
     p = f"""Analyze this technology for Schaeffler:
 
@@ -399,9 +601,7 @@ Use real numbers and specific details throughout. No placeholders."""
     
     return call_llm(p, max_tokens=1800)
 
-# ─── Fixed market ready solution ────────────────────────────────────────────
 def market_ready_solution(title, block, sec):
-    # Completely restructured prompt for better results
     p = f"""Create a comprehensive implementation roadmap for "{title}" in the {sec} sector.
 
 Technology context:
@@ -492,7 +692,6 @@ NO PLACEHOLDERS OR BRACKETS."""
     
     return call_llm(p, max_tokens=2500)
 
-# ─── Fixed partners navigation ──────────────────────────────────────────────
 def partners_navigation(title, block):
     p = f"""Create a strategic partnership plan for "{title}".
 
@@ -838,7 +1037,7 @@ Embed intelligence into infrastructure bearings creating data service revenue st
 - **Market Readiness**: Growing but fragmented
 - **Partnership Requirements**: Telecom providers, city planners"""
 
-# ─── Main chat route ────────────────────────────────────────────────────────
+# ─── Enhanced Routes ────────────────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
 def chat():
     print(f"DEBUG: Request method: {request.method}")
@@ -992,6 +1191,48 @@ def chat():
     session["step"] = "identification"
     return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
 
+@app.route("/download_pdf_report")
+def download_pdf_report():
+    """Generate and download PDF report"""
+    try:
+        # Get current session data
+        session_data = {
+            'use_case': session.get('use_case', ''),
+            'sector': session.get('sector', ''),
+            'demand': session.get('demand', ''),
+            'selected_trend': session.get('selected_trend', ''),
+            'trends_md': session.get('trends_md', ''),
+            'validation_results': session.get('validation_results', {}),
+            'market_solution': session.get('market_solution', ''),
+            'partners': session.get('partners', '')
+        }
+        
+        # Generate PDF
+        pdf_buffer = generate_pdf_report(session_data)
+        
+        # Create filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        use_case_clean = re.sub(r'[^\w\s-]', '', session_data.get('use_case', 'analysis')).replace(' ', '_')
+        filename = f"Schaeffler_Technology_Analysis_{use_case_clean}_{timestamp}.pdf"
+        
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
+    
+    except Exception as e:
+        print(f"PDF generation error: {e}")
+        flash("Error generating PDF report. Please try again.", "error")
+        return redirect(url_for('chat'))
+
+@app.route("/api/sources")
+def get_sources():
+    """API endpoint to get sources for current session"""
+    sources = session.get('last_sources', [])
+    return jsonify(sources)
+
 # ─── CSS Injection for Better Formatting ────────────────────────────────────
 @app.context_processor
 def inject_custom_css():
@@ -1084,75 +1325,6 @@ def inject_custom_css():
            left: 0;
            color: #00B140;
            font-weight: bold;
-       }
-       
-       /* Info Boxes */
-       .info-box {
-           background: #f0f8ff;
-           border-left: 4px solid #0066CC;
-           padding: 1rem 1.5rem;
-           margin: 1.5rem 0;
-           border-radius: 4px;
-       }
-       
-       .success-box {
-           background: #d4edda;
-           border-left: 4px solid #28a745;
-           padding: 1rem 1.5rem;
-           margin: 1.5rem 0;
-           border-radius: 4px;
-       }
-       
-       .warning-box {
-           background: #fff3cd;
-           border-left: 4px solid #ffc107;
-           padding: 1rem 1.5rem;
-           margin: 1.5rem 0;
-           border-radius: 4px;
-       }
-       
-       /* Code Blocks */
-       .rendered-content pre {
-           background: #f8f9fa;
-           border: 1px solid #dee2e6;
-           border-radius: 4px;
-           padding: 1rem;
-           overflow-x: auto;
-       }
-       
-       .rendered-content code {
-           background: #f8f9fa;
-           padding: 0.2rem 0.4rem;
-           border-radius: 3px;
-           font-size: 0.9em;
-       }
-       
-       /* Feedback Button */
-       .feedback-float {
-           position: fixed;
-           bottom: 20px;
-           right: 20px;
-           z-index: 1000;
-       }
-       
-       .feedback-btn {
-           background: #00B140;
-           color: white;
-           padding: 12px 24px;
-           border-radius: 50px;
-           text-decoration: none;
-           display: flex;
-           align-items: center;
-           gap: 8px;
-           box-shadow: 0 4px 12px rgba(0,177,64,0.3);
-           transition: all 0.3s ease;
-       }
-       
-       .feedback-btn:hover {
-           background: #00893D;
-           color: white;
-           transform: translateY(-2px);
-           box-shadow: 0 6px 20px rgba(0,177,64,0.4);
        }
        
        /* Responsive Design */

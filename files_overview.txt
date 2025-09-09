@@ -7,7 +7,6 @@ APPLICATION:
 5- error_handler.py >> Error Recovery Improvements, Implement file-based session storage for large data
 6- template/error.html >> Error Template    
 7- health_check.py >> Application Health Check, Verify system components before running
-8- bin/setup.bat >> Quick Application setup
 
 --------------------------------------------------------------------------------------------------------
 

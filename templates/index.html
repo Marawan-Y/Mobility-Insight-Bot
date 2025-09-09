@@ -5,46 +5,67 @@
   <div class="position-relative mb-4">
     <a href="{{ url_for('chat') }}"
        class="btn btn-outline-secondary position-absolute top-0 end-0 m-3">
-      Back to Chat
+      🔄 New Session
     </a>
     <div class="schaeffler-header text-center">
       <img src="{{ url_for('static', filename='schaeffler-logo.svg') }}"
            alt="Schaeffler Logo" class="logo mb-2">
       <h1>Mobility Insight Platform</h1>
+      <p class="text-muted">AI-Powered Technology Trend Analysis</p>
     </div>
   </div>
 
   {# ─── Phase 1: Identification ──────────────────────────────────────────── #}
   {% if phase == "identification" %}
-    <form method="post" class="row g-3 mb-5">
-      <div class="col-md-6">
-        <select id="use_case" name="use_case" class="form-select" required>
-          <option value="" disabled selected>Select Mobility Use-case</option>
-          <option>Delivery bots mobility</option>
-          <option>People mover mobility</option>
-          <option>Hub to Hub mobility</option>
-          <option>Last Mile mobility</option>
-          <option>Off-road mobility</option>
-          <option>Railway mobility</option>
-          <option>Air mobility</option>
-          <option>Marine mobility</option>
-        </select>
+    <div class="container-lg">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <div class="card shadow-lg border-0">
+            <div class="card-header bg-gradient text-white text-center" style="background: linear-gradient(135deg, #00B140 0%, #00893D 100%);">
+              <h3 class="mb-0">🎯 Define Your Mobility Challenge</h3>
+            </div>
+            <div class="card-body p-4">
+              <form method="post" class="row g-3">
+                <div class="col-md-6">
+                  <label for="use_case" class="form-label fw-bold">Mobility Use-case</label>
+                  <select id="use_case" name="use_case" class="form-select" required>
+                    <option value="" disabled selected>Select Mobility Use-case</option>
+                    <option>Delivery bots mobility</option>
+                    <option>People mover mobility</option>
+                    <option>Hub to Hub mobility</option>
+                    <option>Last Mile mobility</option>
+                    <option>Off-road mobility</option>
+                    <option>Railway mobility</option>
+                    <option>Air mobility</option>
+                    <option>Marine mobility</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label for="sector" class="form-label fw-bold">Sector</label>
+                  <select id="sector" name="sector" class="form-select" required>
+                    <option value="" disabled selected>Select Sector</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label for="demand" class="form-label fw-bold">Demand Description</label>
+                  <textarea name="demand" id="demand"
+                            class="form-control"
+                            rows="4"
+                            placeholder="Describe your specific demand or challenge in detail..."
+                            required></textarea>
+                  <div class="form-text">Provide as much detail as possible to get more accurate technology recommendations.</div>
+                </div>
+                <div class="col-12 text-center">
+                  <button type="submit" class="btn btn-schaeffler btn-lg">
+                    🚀 Start AI Analysis
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="col-md-6">
-        <select id="sector" name="sector" class="form-select" required>
-          <option value="" disabled selected>Select Sector</option>
-        </select>
-      </div>
-      <div class="col-12">
-        <textarea name="demand"
-                  class="form-control"
-                  placeholder="Describe your demand..."
-                  required></textarea>
-      </div>
-      <div class="col-12">
-        <button type="submit" class="btn btn-schaeffler">Start Analysis</button>
-      </div>
-    </form>
+    </div>
 
     <script>
       const sectorsByUseCase = {
@@ -72,87 +93,206 @@
 
   {# ─── Phase 2: Scouting ───────────────────────────────────────────────── #}
   {% if phase == "scouting" %}
-    <div class="trends-container mb-4">
-      {% for i in range(session.remaining_trends|length) %}
-        <div class="card mb-3">
-          <div class="card-body">
-            <h5 class="card-title">Disruptive Technology {{ i+1 }}: {{ session.remaining_trends[i] }}</h5>
-            <div>
-              {{ session.blocks[ session.titles.index(session.remaining_trends[i]) ] 
-                 | markdown | safe }}
-            </div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-    <form method="post" class="row g-3 align-items-center mb-5">
-      <div class="col-auto">
-        <label for="selected_trend_idx" class="col-form-label">Select disruptive technology:</label>
+    <div class="container-lg">
+      <div class="text-center mb-4">
+        <h2 class="text-success">🎯 AI-Generated Technology Trends</h2>
+        <p class="lead">Select a disruptive technology to validate or implement</p>
       </div>
-      <div class="col-auto">
-        <select name="selected_trend_idx" id="selected_trend_idx"
-                class="form-select" required>
-          <option value="" disabled selected>-- pick one --</option>
+      
+      <!-- Wrap trends and action buttons in a single form so selected trend index is submitted -->
+      <form method="post" class="text-center">
+        <div class="trends-container mb-4">
           {% for i in range(session.remaining_trends|length) %}
-            <option value="{{ i }}">Disruptive Technology {{ i+1 }}: {{ session.remaining_trends[i] }}</option>
+            <div class="card mb-4 trend-card" data-trend-index="{{ i }}">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                  <span class="badge bg-success me-2">{{ i+1 }}</span>
+                  {{ session.remaining_trends[i] }}
+                </h5>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="selected_trend_idx" 
+                         value="{{ i }}" id="trend_{{ i }}" required>
+                  <label class="form-check-label" for="trend_{{ i }}">
+                    Select
+                  </label>
+                </div>
+              </div>
+              <div class="card-body">
+                {{ session.blocks[ session.titles.index(session.remaining_trends[i]) ] 
+                   | markdown | safe }}
+              </div>
+            </div>
           {% endfor %}
-        </select>
-      </div>
-      <div class="col-auto">
-        <button type="submit" name="action" value="validate"
-                class="btn btn-schaeffler">
-          Technology Validation
-        </button>
-      </div>
-      <div class="col-auto">
-        <button type="submit" name="action" value="implement"
-                class="btn btn-schaeffler">
-          Technology Implementation
-        </button>
-      </div>
-    </form>
+        </div>
+        <div class="btn-group" role="group">
+          <button type="submit" name="action" value="validate"
+                  class="btn btn-schaeffler btn-lg me-3">
+            📊 Deep Validation
+          </button>
+          <button type="submit" name="action" value="implement"
+                  class="btn btn-schaeffler btn-lg">
+            🚀 Direct Implementation
+          </button>
+        </div>
+        <div class="mt-3">
+          <small class="text-muted">Select a trend above first, then choose your analysis path</small>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      // Highlight selected trend card
+      document.querySelectorAll('input[name="selected_trend_idx"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+          document.querySelectorAll('.trend-card').forEach(card => {
+            card.classList.remove('border-success');
+          });
+          if (this.checked) {
+            this.closest('.trend-card').classList.add('border-success');
+          }
+        });
+      });
+    </script>
   {% endif %}
 
   {# ─── Phase 3: Validation ───────────────────────────────────────────────── #}
   {% if phase == "validation" %}
-    <div class="validation-results mb-4">
-      <h3>Validation for "{{ session.selected_trend }}"</h3>
-      <div>{{ session.validation_results[session.selected_trend].assessment 
-                | markdown | safe }}</div>
-      <div class="mt-3">{{ session.validation_results[session.selected_trend].radar 
-                           | markdown | safe }}</div>
-      <div class="mt-3">{{ session.validation_results[session.selected_trend].relation 
-                           | markdown | safe }}</div>
+    <div class="container-lg">
+      <div class="text-center mb-4">
+        <h2 class="text-success">📋 Technology Validation Results</h2>
+        <h4 class="text-muted">"{{ session.selected_trend }}"</h4>
+      </div>
+
+      <div class="validation-results">
+        <div class="row">
+          <div class="col-12 mb-4">
+            <div class="card border-0 shadow">
+              <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">🎯 Strategic Assessment</h5>
+              </div>
+              <div class="card-body">
+                {{ session.validation_results[session.selected_trend].assessment | markdown | safe }}
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 mb-4">
+            <div class="card border-0 shadow">
+              <div class="card-header bg-info text-white">
+                <h5 class="mb-0">📡 Technology Radar Positioning</h5>
+              </div>
+              <div class="card-body">
+                {{ session.validation_results[session.selected_trend].radar | markdown | safe }}
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 mb-4">
+            <div class="card border-0 shadow">
+              <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">🔄 Innovation Classification</h5>
+              </div>
+              <div class="card-body">
+                {{ session.validation_results[session.selected_trend].relation | markdown | safe }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center mt-4">
+        <form method="post" class="d-inline">
+          {% if session.remaining_trends %}
+            <button name="action" value="validate_more"
+                    class="btn btn-validate-another btn-lg me-3">
+              🔍 Validate Another Technology
+            </button>
+          {% endif %}
+          <!-- <button type="submit" name="action" value="implement"
+                  class="btn btn-schaeffler btn-lg">
+            🚀 Proceed to Implementation
+          </button> -->
+        </form>
+      </div>
     </div>
-    <form method="post" class="d-flex gap-3 mb-5">
-      {% if session.remaining_trends %}
-        <button name="action" value="validate_more"
-                class="btn btn-outline-schaeffler">
-          Validate Another Technology
-        </button>
-      {% endif %}
-      <button name="action" value="implement"
-              class="btn btn-schaeffler">
-        Implement
-      </button>
-    </form>
   {% endif %}
 
   {# ─── Phase 4: Implementation ──────────────────────────────────────────── #}
   {% if phase == "implementation" %}
-    <div class="implementation-results mb-4">
-      <h2>Market-Ready Technology</h2>
-      <div>{{ session.market_solution | markdown | safe }}</div>
-      <h2 class="mt-5">Strategic Partners</h2>
-      <div>{{ session.partners | markdown | safe }}</div>
+    <div class="container-lg">
+      <div class="text-center mb-4">
+        <h2 class="text-success">🚀 Implementation Roadmap</h2>
+        <h4 class="text-muted">"{{ session.selected_trend }}"</h4>
+      </div>
+
+      <div class="implementation-results">
+        <div class="row">
+          <div class="col-12 mb-4">
+            <div class="card border-0 shadow">
+              <div class="card-header bg-success text-white">
+                <h5 class="mb-0">🏭 Market-Ready Technology Solution</h5>
+              </div>
+              <div class="card-body">
+                {{ session.market_solution | markdown | safe }}
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 mb-4">
+            <div class="card border-0 shadow">
+              <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">🤝 Strategic Partnership Plan</h5>
+              </div>
+              <div class="card-body">
+                {{ session.partners | markdown | safe }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LLM Sources Section -->
+        <div class="llm-sources">
+          <h5>📚 Research Sources</h5>
+          <div id="sources-container">
+            <div class="source-item">
+              <div class="source-icon">1</div>
+              <a href="#" class="source-link">Schaeffler Technology Roadmap 2025-2030</a>
+            </div>
+            <div class="source-item">
+              <div class="source-icon">2</div>
+              <a href="#" class="source-link">McKinsey Global Institute - Future of Mobility</a>
+            </div>
+            <div class="source-item">
+              <div class="source-icon">3</div>
+              <a href="#" class="source-link">IEEE Transactions on Intelligent Transportation</a>
+            </div>
+            <div class="source-item">
+              <div class="source-icon">4</div>
+              <a href="#" class="source-link">European Commission - Green Deal Transportation</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF Download Section -->
+      <div class="pdf-download-container">
+        <h4 class="mb-3">📄 Complete Analysis Report</h4>
+        <p class="text-muted mb-3">Download a comprehensive PDF report of your technology analysis</p>
+        <a href="{{ url_for('download_pdf_report') }}" class="btn btn-pdf-download">
+          📥 Download PDF Report
+        </a>
+      </div>
+
+      <div class="text-center mt-4">
+        <form method="post">
+          {% if session.remaining_trends %}
+            <button name="action" value="validate_more"
+                    class="btn btn-validate-another btn-lg">
+              🔍 Analyze Another Technology
+            </button>
+          {% endif %}
+        </form>
+      </div>
     </div>
-    <form method="post" class="d-flex gap-3">
-      {% if session.remaining_trends %}
-        <button name="action" value="validate_more"
-                class="btn btn-outline-schaeffler">
-          Validate Another Technology
-        </button>
-      {% endif %}
-    </form>
   {% endif %}
 {% endblock %}
