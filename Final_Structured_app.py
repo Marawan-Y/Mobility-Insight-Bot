@@ -4,7 +4,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
-import pymysql
+import psycopg2
 import markdown as md
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, session, flash, jsonify, send_file, url_for
@@ -24,6 +24,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from assessment_write import write_trial_row
 from session_manager import session_manager
 
+
 # Add these helper functions after your other utility functions
 def save_large_session_data(session, key, data):
     """Save large data to file and store reference in session"""
@@ -33,6 +34,7 @@ def save_large_session_data(session, key, data):
     session_manager.save_session_data(session_id, session_data)
     session[f"{key}_ref"] = True  # Just store a reference
 
+
 def load_large_session_data(session, key):
     """Load large data from file using session reference"""
     if session.get(f"{key}_ref"):
@@ -41,19 +43,22 @@ def load_large_session_data(session, key):
         return session_data.get(key)
     return session.get(key)  # Fallback to session if not in file
 
+
 # ─── Flask & Jinja Setup ────────────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change_me")
 
+
 def render_markdown(text):
     """Enhanced markdown renderer with better table formatting"""
     if not text:
         return ""
-    
+
     # Convert markdown to HTML with extensions
-    rendered_html = md.markdown(text, extensions=["tables", "fenced_code", "nl2br", "extra"])
-    
+    rendered_html = md.markdown(
+        text, extensions=["tables", "fenced_code", "nl2br", "extra"])
+
     # Enhanced table styling
     table_style = '''style="border-collapse: collapse; width: 100%; margin: 1.5rem 0; 
                      box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;"'''
@@ -63,74 +68,102 @@ def render_markdown(text):
     td_style = '''style="border: 1px solid #ddd; padding: 10px 15px; text-align: left; 
                   background-color: white;"'''
     tr_even_style = 'style="background-color: #f8f9fa;"'
-    
+
     # Apply enhanced styles
-    rendered_html = rendered_html.replace("<table>", f'<table class="trend-table" {table_style}>')
+    rendered_html = rendered_html.replace(
+        "<table>", f'<table class="trend-table" {table_style}>')
     rendered_html = rendered_html.replace("<thead>", f'<thead {thead_style}>')
     rendered_html = rendered_html.replace("<th>", f'<th {th_style}>')
     rendered_html = rendered_html.replace("<td>", f'<td {td_style}>')
-    
+
     # Add alternating row colors
-    rendered_html = re.sub(r'<tr>(?=.*?<td)', lambda m: '<tr class="even-row">' if m.start() % 2 == 0 else '<tr>', rendered_html)
-    
+    rendered_html = re.sub(
+        r'<tr>(?=.*?<td)', lambda m: '<tr class="even-row">'
+        if m.start() % 2 == 0 else '<tr>', rendered_html)
+
     # Format headers with Schaeffler green
-    rendered_html = re.sub(r'<h2>(.*?)</h2>', r'<h2 style="color: #00B140; border-bottom: 2px solid #00B140; padding-bottom: 0.5rem; margin-top: 2rem;">\1</h2>', rendered_html)
-    rendered_html = re.sub(r'<h3>(.*?)</h3>', r'<h3 style="color: #003826; margin-top: 1.5rem;">\1</h3>', rendered_html)
-    rendered_html = re.sub(r'<h4>(.*?)</h4>', r'<h4 style="color: #00B140; margin-top: 1rem;">\1</h4>', rendered_html)
-    
+    rendered_html = re.sub(
+        r'<h2>(.*?)</h2>',
+        r'<h2 style="color: #00B140; border-bottom: 2px solid #00B140; padding-bottom: 0.5rem; margin-top: 2rem;">\1</h2>',
+        rendered_html)
+    rendered_html = re.sub(
+        r'<h3>(.*?)</h3>',
+        r'<h3 style="color: #003826; margin-top: 1.5rem;">\1</h3>',
+        rendered_html)
+    rendered_html = re.sub(
+        r'<h4>(.*?)</h4>',
+        r'<h4 style="color: #00B140; margin-top: 1rem;">\1</h4>',
+        rendered_html)
+
     # Format lists with better spacing
-    rendered_html = re.sub(r'<ul>', r'<ul style="margin: 1rem 0; padding-left: 2rem;">', rendered_html)
-    rendered_html = re.sub(r'<li>', r'<li style="margin: 0.5rem 0; line-height: 1.6;">', rendered_html)
-    
+    rendered_html = re.sub(
+        r'<ul>', r'<ul style="margin: 1rem 0; padding-left: 2rem;">',
+        rendered_html)
+    rendered_html = re.sub(
+        r'<li>', r'<li style="margin: 0.5rem 0; line-height: 1.6;">',
+        rendered_html)
+
     # Format strong text with Schaeffler green
-    rendered_html = re.sub(r'<strong>(.*?)</strong>', r'<strong style="color: #003826; font-weight: 600;">\1</strong>', rendered_html)
-    
+    rendered_html = re.sub(
+        r'<strong>(.*?)</strong>',
+        r'<strong style="color: #003826; font-weight: 600;">\1</strong>',
+        rendered_html)
+
     # Add container divs for better structure
     rendered_html = f'<div class="rendered-content" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; line-height: 1.8; color: #2c3e50;">{rendered_html}</div>'
-    
+
     return Markup(rendered_html)
+
 
 # Add the filter to Jinja environment
 app.jinja_env.filters["markdown"] = render_markdown
 
 # ─── User Feedback Configuration ───────────────────────────────────────────
-FEEDBACK_FORM_URL = os.getenv("FEEDBACK_FORM_URL", "https://docs.google.com/forms/d/e/1FAIpQLSfT5gGcFuzE_9O1Vca545YmJ83wwzDy-4ZEoerhILOuyNmKWw/viewform?usp=header")
+FEEDBACK_FORM_URL = os.getenv(
+    "FEEDBACK_FORM_URL",
+    "https://docs.google.com/forms/d/e/1FAIpQLSfT5gGcFuzE_9O1Vca545YmJ83wwzDy-4ZEoerhILOuyNmKWw/viewform?usp=header"
+)
 
 # ─── Database Config ────────────────────────────────────────────────────────
-DB_HOST     = os.getenv("DB_HOST", "localhost")
-DB_PORT     = int(os.getenv("DB_PORT", 3306))
-DB_USER     = os.getenv("DB_USER", "your_user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "your_pass")
-DB_NAME     = os.getenv("DB_NAME", "mobility_bot")
+# Use Replit's built-in PostgreSQL database
+DATABASE_URL = os.getenv("DATABASE_URL",
+                         "postgresql://postgres:password@helium/heliumdb")
+DB_HOST = os.getenv("DB_HOST", "helium")
+DB_PORT = int(os.getenv("DB_PORT", 5432))
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
+DB_NAME = os.getenv("DB_NAME", "heliumdb")
 
-# --- SQLAlchemy engine (pool) using PyMySQL ---
-DB_POOL_SIZE   = int(os.getenv("DB_POOL_SIZE", 8))
-DB_MAX_OVER    = int(os.getenv("DB_MAX_OVERFLOW", 2))
-DB_POOL_RECYCLE= int(os.getenv("DB_POOL_RECYCLE", 1800))  # seconds
+# --- SQLAlchemy engine (pool) using psycopg2 ---
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 8))
+DB_MAX_OVER = int(os.getenv("DB_MAX_OVERFLOW", 2))
+DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", 1800))  # seconds
 
-# URL-encode password for a safe DSN (handles special chars like !, #, @)
-_pw = quote_plus(DB_PASSWORD)
-dsn = f"mysql+pymysql://{DB_USER}:{_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
+# Use DATABASE_URL if available, otherwise construct DSN
+if DATABASE_URL and DATABASE_URL.startswith('postgresql'):
+    dsn = DATABASE_URL
+else:
+    # URL-encode password for a safe DSN (handles special chars like !, #, @)
+    _pw = quote_plus(DB_PASSWORD)
+    dsn = f"postgresql+psycopg2://{DB_USER}:{_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 engine = create_engine(
     dsn,
     pool_size=DB_POOL_SIZE,
     max_overflow=DB_MAX_OVER,
-    pool_pre_ping=True,          # drops dead conns automatically
-    pool_recycle=DB_POOL_RECYCLE, # refresh conns periodically
+    pool_pre_ping=True,  # drops dead conns automatically
+    pool_recycle=DB_POOL_RECYCLE,  # refresh conns periodically
     connect_args={
-        "connect_timeout": 5,    # TCP connect timeout (seconds)
-        "read_timeout": 10,      # server read timeout
-        "write_timeout": 10      # client write timeout
-    }
-)
+        "connect_timeout": 5,  # TCP connect timeout (seconds)
+        "sslmode": "disable"  # Disable SSL for local connections
+    })
 
 # ─── LLM Config ─────────────────────────────────────────────────────────────
-LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "openai").lower()
-OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
-VERTEX_PROJECT  = os.getenv("VERTEX_PROJECT")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+VERTEX_PROJECT = os.getenv("VERTEX_PROJECT")
 VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
-VERTEX_MODEL    = os.getenv("VERTEX_MODEL", "gemini-1.0-pro")
+VERTEX_MODEL = os.getenv("VERTEX_MODEL", "gemini-1.0-pro")
 
 if LLM_PROVIDER == "vertex":
     import vertexai
@@ -141,18 +174,20 @@ if LLM_PROVIDER == "vertex":
 else:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+
 # ─── Database Connection Context Manager ────────────────────────────────────
 @contextmanager
 def get_db_connection():
     conn = None
     try:
-        # raw_connection() returns a DB-API connection (PyMySQL) from the pool
+        # raw_connection() returns a DB-API connection (psycopg2) from the pool
         conn = engine.raw_connection()
-        # Optional safety on reuse
+        # Optional safety on reuse - PostgreSQL doesn't have ping, use a simple query
         try:
-            conn.ping(reconnect=True)
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
         except Exception:
-            # Force renewal if ping fails
+            # Force renewal if simple query fails
             conn.close()
             conn = engine.raw_connection()
         yield conn
@@ -171,24 +206,27 @@ def get_db_connection():
             except Exception:
                 pass
 
+
 # ─── Enhanced LLM helper with source tracking ─────────────────────────────
-def call_llm_with_sources(prompt: str, retries: int = 2, delay: float = 1.0,
+def call_llm_with_sources(prompt: str,
+                          retries: int = 2,
+                          delay: float = 1.0,
                           max_tokens: int = 2000) -> tuple:
     """Enhanced LLM call that returns both content and mock sources"""
-    
+
     # Generate mock sources based on the content type and prompt
     mock_sources = generate_mock_sources(prompt)
-    
+
     for attempt in range(retries):
         try:
             if LLM_PROVIDER == "vertex":
                 vertexai.init(project=VERTEX_PROJECT, location=VERTEX_LOCATION)
                 model = GenerativeModel(model_name=VERTEX_MODEL)
                 content = model.generate_content(
-                    prompt, temperature=0.3, max_output_tokens=max_tokens
-                ).text.strip()
+                    prompt, temperature=0.3,
+                    max_output_tokens=max_tokens).text.strip()
                 return content, mock_sources
-            
+
             # Enhanced system prompt for better responses
             system_prompt = """You are a Schaeffler strategic innovation analyst with deep expertise in motion technology, precision components, mechatronics, and thermal management. 
 
@@ -200,50 +238,52 @@ CRITICAL INSTRUCTIONS:
 5. Format tables properly with complete data in all cells
 6. Never repeat the prompt back - only provide the requested analysis"""
 
-            resp = openai_client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens,
-                timeout=60
-            )
+            resp = openai_client.chat.completions.create(model="gpt-4-turbo",
+                                                         messages=[{
+                                                             "role":
+                                                             "system",
+                                                             "content":
+                                                             system_prompt
+                                                         }, {
+                                                             "role":
+                                                             "user",
+                                                             "content":
+                                                             prompt
+                                                         }],
+                                                         temperature=0.3,
+                                                         max_tokens=max_tokens,
+                                                         timeout=60)
             content = resp.choices[0].message.content.strip()
             return content, mock_sources
-            
+
         except Exception as e:
             print(f"LLM attempt {attempt+1} failed: {e}")
-            if attempt == retries-1:
+            if attempt == retries - 1:
                 return f"Error generating content: {str(e)[:100]}", []
             time.sleep(delay)
 
+
 def generate_mock_sources(prompt: str) -> list:
     """Generate realistic mock sources based on prompt content"""
-    base_sources = [
-        {
-            "title": "Schaeffler Technology Roadmap 2025-2030",
-            "url": "https://www.schaeffler.com/technology-roadmap",
-            "type": "internal"
-        },
-        {
-            "title": "McKinsey Global Institute - Future of Mobility",
-            "url": "https://www.mckinsey.com/industries/automotive/our-insights/the-future-of-mobility",
-            "type": "research"
-        },
-        {
-            "title": "IEEE Transactions on Intelligent Transportation Systems",
-            "url": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=6979",
-            "type": "academic"
-        },
-        {
-            "title": "European Commission - Sustainable Transport Strategy",
-            "url": "https://ec.europa.eu/transport/themes/strategies/2020_en",
-            "type": "regulatory"
-        }
-    ]
-    
+    base_sources = [{
+        "title": "Schaeffler Technology Roadmap 2025-2030",
+        "url": "https://www.schaeffler.com/technology-roadmap",
+        "type": "internal"
+    }, {
+        "title": "McKinsey Global Institute - Future of Mobility",
+        "url":
+        "https://www.mckinsey.com/industries/automotive/our-insights/the-future-of-mobility",
+        "type": "research"
+    }, {
+        "title": "IEEE Transactions on Intelligent Transportation Systems",
+        "url": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=6979",
+        "type": "academic"
+    }, {
+        "title": "European Commission - Sustainable Transport Strategy",
+        "url": "https://ec.europa.eu/transport/themes/strategies/2020_en",
+        "type": "regulatory"
+    }]
+
     # Add specific sources based on prompt keywords
     if "e-mobility" in prompt.lower() or "electric" in prompt.lower():
         base_sources.append({
@@ -251,28 +291,33 @@ def generate_mock_sources(prompt: str) -> list:
             "url": "https://about.bnef.com/electric-vehicle-outlook",
             "type": "market"
         })
-    
+
     if "autonomous" in prompt.lower() or "ai" in prompt.lower():
         base_sources.append({
             "title": "SAE International - Levels of Driving Automation",
-            "url": "https://www.sae.org/news/2019/01/sae-updates-j3016-automated-driving-graphic",
+            "url":
+            "https://www.sae.org/news/2019/01/sae-updates-j3016-automated-driving-graphic",
             "type": "standards"
         })
-    
+
     if "thermal" in prompt.lower() or "battery" in prompt.lower():
         base_sources.append({
             "title": "Nature Energy - Battery Thermal Management Review",
             "url": "https://www.nature.com/articles/s41560-021-00918-2",
             "type": "academic"
         })
-    
+
     return base_sources[:6]  # Return max 6 sources
 
-def call_llm(prompt: str, retries: int = 2, delay: float = 1.0,
+
+def call_llm(prompt: str,
+             retries: int = 2,
+             delay: float = 1.0,
              max_tokens: int = 2000) -> str:
     """Legacy function for compatibility"""
     content, _ = call_llm_with_sources(prompt, retries, delay, max_tokens)
     return content
+
 
 # ─── Utility Functions ──────────────────────────────────────────────────────
 def split_trend_blocks(raw_md: str):
@@ -282,143 +327,232 @@ def split_trend_blocks(raw_md: str):
     for i, m in enumerate(matches):
         titles.append(m.group(1).strip())
         start = m.end()
-        end = matches[i+1].start() if i+1 < len(matches) else len(raw_md)
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw_md)
         blocks.append(raw_md[start:end].strip())
     return titles, blocks
+
 
 def extract_confidence_score(block: str) -> float:
     """Extract confidence score from trend block"""
     m = re.search(r"Confidence\s*Score:\s*([0-9.]+)", block, re.IGNORECASE)
     return float(m.group(1)) if m else 0.5
 
+
 # ─── PDF Report Generation ──────────────────────────────────────────────────
 def generate_pdf_report(session_data):
     """Generate comprehensive PDF report"""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch, bottomMargin=1*inch)
-    
+    doc = SimpleDocTemplate(buffer,
+                            pagesize=A4,
+                            topMargin=1 * inch,
+                            bottomMargin=1 * inch)
+
     # Get styles
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        spaceAfter=30,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor('#00B140')
-    )
-    
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=16,
-        spaceAfter=12,
-        textColor=colors.HexColor('#003826')
-    )
-    
-    body_style = ParagraphStyle(
-        'CustomBody',
-        parent=styles['Normal'],
-        fontSize=11,
-        spaceAfter=12,
-        alignment=TA_JUSTIFY
-    )
-    
+    title_style = ParagraphStyle('CustomTitle',
+                                 parent=styles['Heading1'],
+                                 fontSize=24,
+                                 spaceAfter=30,
+                                 alignment=TA_CENTER,
+                                 textColor=colors.HexColor('#00B140'))
+
+    heading_style = ParagraphStyle('CustomHeading',
+                                   parent=styles['Heading2'],
+                                   fontSize=16,
+                                   spaceAfter=12,
+                                   textColor=colors.HexColor('#003826'))
+
+    body_style = ParagraphStyle('CustomBody',
+                                parent=styles['Normal'],
+                                fontSize=11,
+                                spaceAfter=12,
+                                alignment=TA_JUSTIFY)
+
     # Build content
     story = []
-    
+
     # Title page
-    story.append(Paragraph("Schaeffler Mobility Insight Platform", title_style))
-    story.append(Paragraph("Technology Trend Analysis Report", styles['Heading2']))
-    story.append(Spacer(1, 0.5*inch))
-    
+    story.append(Paragraph("Schaeffler Mobility Insight Platform",
+                           title_style))
+    story.append(
+        Paragraph("Technology Trend Analysis Report", styles['Heading2']))
+    story.append(Spacer(1, 0.5 * inch))
+
     # Executive Summary
     story.append(Paragraph("Executive Summary", heading_style))
-    
+
     summary_data = [
         ['Use Case:', session_data.get('use_case', 'N/A')],
         ['Sector:', session_data.get('sector', 'N/A')],
         ['Demand:', session_data.get('demand', 'N/A')],
-        ['Selected Technology:', session_data.get('selected_trend', 'N/A')],
-        ['Analysis Date:', datetime.now().strftime('%B %d, %Y')],
-        ['Report Generated:', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+        ['Selected Technology:',
+         session_data.get('selected_trend', 'N/A')],
+        ['Analysis Date:',
+         datetime.now().strftime('%B %d, %Y')],
+        ['Report Generated:',
+         datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
     ]
-    
-    summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
-    summary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#00B140')),
-        ('TEXTCOLOR', (0, 0), (0, -1), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#f8f9fa')),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
+
+    summary_table = Table(summary_data, colWidths=[2 * inch, 4 * inch])
+    summary_table.setStyle(
+        TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#00B140')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#f8f9fa')),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+
     story.append(summary_table)
     story.append(PageBreak())
-    
-    # Generated Trends
-    story.append(Paragraph("Generated Technology Trends", heading_style))
+
+    # Generated Trends Section
+    story.append(Paragraph("1. Generated Technology Trends", heading_style))
     if session_data.get('trends_md'):
         # Clean markdown for PDF
-        # Convert Markdown to clean text and preserve line breaks as <br/> for better PDF formatting
         clean_text = clean_markdown_for_pdf(session_data['trends_md'])
-        # Replace newlines with <br/> so reportlab respects line breaks within a single Paragraph
-        clean_text = clean_text.replace('\n', '<br/>')
-        story.append(Paragraph(clean_text, body_style))
+        # Split into smaller chunks to avoid overly long paragraphs
+        paragraphs = clean_text.split('\n\n')
+        for para in paragraphs:
+            if para.strip():
+                # Replace remaining newlines with <br/> for line breaks
+                para_formatted = para.replace('\n', '<br/>')
+                story.append(Paragraph(para_formatted, body_style))
+                story.append(Spacer(1, 0.1 * inch))
+    else:
+        story.append(
+            Paragraph("No technology trends generated yet.", body_style))
     story.append(PageBreak())
-    
-    # Validation Results (if available)
+
+    # Validation Results Section
+    story.append(Paragraph("2. Validation Analysis", heading_style))
     validation_results = session_data.get('validation_results', {})
     selected_trend = session_data.get('selected_trend', '')
-    
-    if selected_trend and selected_trend in validation_results:
-        story.append(Paragraph(f"Validation Analysis: {selected_trend}", heading_style))
-        
-        vr = validation_results[selected_trend]
-        
+
+    print(f"DEBUG PDF: validation_results = {validation_results}")
+    print(f"DEBUG PDF: selected_trend = {selected_trend}")
+
+    # Check if we have validation data in either format
+    has_validation_data = False
+    vr = {}
+
+    if selected_trend and validation_results:
+        if selected_trend in validation_results:
+            vr = validation_results[selected_trend]
+            has_validation_data = True
+        elif isinstance(validation_results, dict) and validation_results:
+            # Sometimes validation results might be stored differently
+            vr = validation_results
+            has_validation_data = True
+
+    # Also check Flask session as fallback
+    if not has_validation_data:
+        from flask import session as flask_session
+        flask_validation = flask_session.get('validation_results', {})
+        if selected_trend and flask_validation and selected_trend in flask_validation:
+            vr = flask_validation[selected_trend]
+            has_validation_data = True
+
+    print(f"DEBUG PDF: has_validation_data = {has_validation_data}")
+    print(f"DEBUG PDF: vr content = {vr}")
+
+    if has_validation_data and vr:
+        story.append(
+            Paragraph(f"Analysis for: {selected_trend}", styles['Heading3']))
+
         if vr.get('assessment'):
             story.append(Paragraph("Strategic Assessment", styles['Heading3']))
             clean_assessment = clean_markdown_for_pdf(vr['assessment'])
-            clean_assessment = clean_assessment.replace('\n', '<br/>')
-            story.append(Paragraph(clean_assessment, body_style))
-            story.append(Spacer(1, 0.2*inch))
-        
+            # Split into paragraphs for better formatting
+            assessment_paragraphs = clean_assessment.split('\n\n')
+            for para in assessment_paragraphs:
+                if para.strip():
+                    para_formatted = para.replace('\n', '<br/>')
+                    story.append(Paragraph(para_formatted, body_style))
+                    story.append(Spacer(1, 0.1 * inch))
+            story.append(Spacer(1, 0.2 * inch))
+
         if vr.get('radar'):
-            story.append(Paragraph("Technology Radar Positioning", styles['Heading3']))
+            story.append(
+                Paragraph("Technology Radar Positioning", styles['Heading3']))
             clean_radar = clean_markdown_for_pdf(vr['radar'])
-            clean_radar = clean_radar.replace('\n', '<br/>')
-            story.append(Paragraph(clean_radar, body_style))
-            story.append(Spacer(1, 0.2*inch))
-        
+            # Split into paragraphs for better formatting
+            radar_paragraphs = clean_radar.split('\n\n')
+            for para in radar_paragraphs:
+                if para.strip():
+                    para_formatted = para.replace('\n', '<br/>')
+                    story.append(Paragraph(para_formatted, body_style))
+                    story.append(Spacer(1, 0.1 * inch))
+            story.append(Spacer(1, 0.2 * inch))
+
         if vr.get('relation'):
-            story.append(Paragraph("Innovation Classification", styles['Heading3']))
+            story.append(
+                Paragraph("Innovation Classification", styles['Heading3']))
             clean_relation = clean_markdown_for_pdf(vr['relation'])
-            clean_relation = clean_relation.replace('\n', '<br/>')
-            story.append(Paragraph(clean_relation, body_style))
-        
-        story.append(PageBreak())
-    
-    # Implementation Results (if available)
+            # Split into paragraphs for better formatting
+            relation_paragraphs = clean_relation.split('\n\n')
+            for para in relation_paragraphs:
+                if para.strip():
+                    para_formatted = para.replace('\n', '<br/>')
+                    story.append(Paragraph(para_formatted, body_style))
+                    story.append(Spacer(1, 0.1 * inch))
+            story.append(Spacer(1, 0.2 * inch))
+    else:
+        story.append(
+            Paragraph("No validation analysis available yet.", body_style))
+
+    story.append(PageBreak())
+
+    # Implementation Results Section
+    story.append(Paragraph("3. Implementation Strategy", heading_style))
+
+    has_implementation_content = False
+    print(
+        f"DEBUG PDF: market_solution = {session_data.get('market_solution', 'None')[:100] if session_data.get('market_solution') else 'None'}"
+    )
+    print(
+        f"DEBUG PDF: partners = {session_data.get('partners', 'None')[:100] if session_data.get('partners') else 'None'}"
+    )
+
     if session_data.get('market_solution'):
-        story.append(Paragraph("Market-Ready Implementation", heading_style))
+        story.append(
+            Paragraph("Market-Ready Implementation", styles['Heading3']))
         clean_market = clean_markdown_for_pdf(session_data['market_solution'])
-        clean_market = clean_market.replace('\n', '<br/>')
-        story.append(Paragraph(clean_market, body_style))
-        story.append(Spacer(1, 0.2*inch))
-    
+        # Split into paragraphs for better formatting
+        market_paragraphs = clean_market.split('\n\n')
+        for para in market_paragraphs:
+            if para.strip():
+                para_formatted = para.replace('\n', '<br/>')
+                story.append(Paragraph(para_formatted, body_style))
+                story.append(Spacer(1, 0.1 * inch))
+        story.append(Spacer(1, 0.2 * inch))
+        has_implementation_content = True
+
     if session_data.get('partners'):
-        story.append(Paragraph("Strategic Partnership Plan", heading_style))
+        story.append(
+            Paragraph("Strategic Partnership Plan", styles['Heading3']))
         clean_partners = clean_markdown_for_pdf(session_data['partners'])
-        clean_partners = clean_partners.replace('\n', '<br/>')
-        story.append(Paragraph(clean_partners, body_style))
-    
+        # Split into paragraphs for better formatting
+        partners_paragraphs = clean_partners.split('\n\n')
+        for para in partners_paragraphs:
+            if para.strip():
+                para_formatted = para.replace('\n', '<br/>')
+                story.append(Paragraph(para_formatted, body_style))
+                story.append(Spacer(1, 0.1 * inch))
+        has_implementation_content = True
+
+    if not has_implementation_content:
+        story.append(
+            Paragraph("No implementation strategy available yet.", body_style))
+
     # Build PDF
     doc.build(story)
     buffer.seek(0)
     return buffer
+
 
 def clean_markdown_for_pdf(text):
     """Clean markdown text for PDF rendering"""
@@ -441,6 +575,7 @@ def clean_markdown_for_pdf(text):
     # Trim trailing spaces on each line
     text = '\n'.join(line.rstrip() for line in text.split('\n'))
     return text.strip()
+
 
 # ─── Enhanced assessment with source tracking ──────────────────────────────
 def assess_trend(title, block):
@@ -489,11 +624,12 @@ List specific strategies for:
 - Competitive Risks: [Clear defensive positioning]
 
 Remember: Fill ALL placeholders with realistic, specific values. Do NOT leave any [brackets] unfilled."""
-    
+
     content, sources = call_llm_with_sources(p, max_tokens=2000)
     # Store sources in session for later use
     session['last_sources'] = sources
     return content
+
 
 # Continue with other LLM functions...
 def radar_positioning(title, assessment):
@@ -530,8 +666,9 @@ Create a table showing:
 List and explain 3 critical enablers with specific details.
 
 Fill ALL sections with concrete, specific information. No placeholders."""
-    
+
     return call_llm(p, max_tokens=1500)
+
 
 def relation_criteria(title, block):
     p = f"""Analyze this technology for Schaeffler:
@@ -598,8 +735,9 @@ Provide specific details for each phase:
 Provide a clear, actionable recommendation with specific next steps.
 
 Use real numbers and specific details throughout. No placeholders."""
-    
+
     return call_llm(p, max_tokens=1800)
+
 
 def market_ready_solution(title, block, sec):
     p = f"""Create a comprehensive implementation roadmap for "{title}" in the {sec} sector.
@@ -689,8 +827,9 @@ For each risk type:
 
 USE SPECIFIC NUMBERS, REAL LOCATIONS, AND CONCRETE DETAILS THROUGHOUT.
 NO PLACEHOLDERS OR BRACKETS."""
-    
+
     return call_llm(p, max_tokens=2500)
+
 
 def partners_navigation(title, block):
     p = f"""Create a strategic partnership plan for "{title}".
@@ -774,31 +913,42 @@ Describe:
 - Communication protocols
 
 USE REAL COMPANY NAMES AND SPECIFIC DETAILS. NO GENERIC PLACEHOLDERS."""
-    
+
     return call_llm(p, max_tokens=2000)
 
+
 # ─── Database helper with better error handling ─────────────────────────────
-def save_to_db(uc, sec, dem, trends_md, sel, ass, rad,
-               rel, msol, prts, titles=None, blocks=None):
+def save_to_db(uc,
+               sec,
+               dem,
+               trends_md,
+               sel,
+               ass,
+               rad,
+               rel,
+               msol,
+               prts,
+               titles=None,
+               blocks=None):
     """Save to database with proper confidence score extraction and session ID"""
     confidence_score = None
-    
+
     # Extract confidence score from selected trend
     if titles and blocks and sel in titles:
         idx = titles.index(sel)
         if idx < len(blocks):
             confidence_score = extract_confidence_score(blocks[idx])
-    
+
     # Generate session ID for feedback tracking
     session_id = session.get('session_id', None)
     if not session_id:
         session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.urandom(4).hex()}"
         session['session_id'] = session_id
-    
+
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            
+
             # First check if table exists and create if not
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS trend_queries (
@@ -818,33 +968,39 @@ def save_to_db(uc, sec, dem, trends_md, sel, ass, rad,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Insert the data
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO trend_queries (
                     use_case, sector, demand, selected_trend,
                     trend_solutions, trend_assessment, radar_positioning,
                     pestel_tag, market_solution, partners, confidence_score,
                     session_id
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (uc, sec, dem, sel, trends_md, ass, rad, rel,
-                  msol, prts, confidence_score, session_id))
+            """, (uc, sec, dem, sel, trends_md, ass, rad, rel, msol, prts,
+                  confidence_score, session_id))
             conn.commit()
-            print(f"Successfully saved to database with session_id: {session_id}")
+            print(
+                f"Successfully saved to database with session_id: {session_id}"
+            )
     except Exception as e:
         print(f"Database error: {e}")
         print(f"Error type: {type(e).__name__}")
         # Don't flash error to user, just log it
         # Continue execution even if database fails
 
+
 # ─── Generate trends with better structure ──────────────────────────────────
 def generate_trends(uc: str, sec: str, dem: str) -> str:
-    print(f"DEBUG: Starting generate_trends with uc='{uc}', sec='{sec}', dem='{dem}'")
-    
+    print(
+        f"DEBUG: Starting generate_trends with uc='{uc}', sec='{sec}', dem='{dem}'"
+    )
+
     if not uc or not sec or not dem:
         print("DEBUG: Missing input parameters")
         return "Error: Missing input parameters"
-    
+
     # Enhanced prompt with clearer instructions
     prompt_text = f"""Generate exactly 3 mobility disruptive technologies for Schaeffler.
 
@@ -898,20 +1054,21 @@ Confidence Score: [0.7-0.9 - use decimals]
 Ensure each technology is distinct and uses specific, realistic details."""
 
     print("DEBUG: Calling LLM with enhanced prompt")
-    
+
     try:
         result = call_llm(prompt_text, max_tokens=2500)
         print(f"DEBUG: LLM returned {len(result)} characters")
-        
+
         if not result or len(result.strip()) < 50:
             print("DEBUG: Using fallback trends")
             return generate_fallback_trends(uc, sec, dem)
-            
+
         return result
-        
+
     except Exception as e:
         print(f"DEBUG: LLM call failed: {str(e)}")
         return generate_fallback_trends(uc, sec, dem)
+
 
 def generate_fallback_trends(uc: str, sec: str, dem: str) -> str:
     """Generate enhanced fallback trends with full structure"""
@@ -1037,17 +1194,21 @@ Embed intelligence into infrastructure bearings creating data service revenue st
 - **Market Readiness**: Growing but fragmented
 - **Partnership Requirements**: Telecom providers, city planners"""
 
+
 # ─── Enhanced Routes ────────────────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
 def chat():
     print(f"DEBUG: Request method: {request.method}")
-    
+
     if request.method == "GET":
         print("DEBUG: GET request - clearing session")
         session.clear()
         session["step"] = "identification"
-        session["session_id"] = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.urandom(4).hex()}"
-        return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
+        session[
+            "session_id"] = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.urandom(4).hex()}"
+        return render_template("index.html",
+                               step="identification",
+                               feedback_url=FEEDBACK_FORM_URL)
 
     print(f"DEBUG: POST request received")
     step = session.get("step")
@@ -1058,69 +1219,91 @@ def chat():
             uc = request.form.get("use_case", "").strip()
             sec = request.form.get("sector", "").strip()
             dem = request.form.get("demand", "").strip()
-           
-            print(f"DEBUG: Received form data - uc='{uc}', sec='{sec}', dem='{dem}'")
-           
+
+            print(
+                f"DEBUG: Received form data - uc='{uc}', sec='{sec}', dem='{dem}'"
+            )
+
             if not (uc and sec and dem):
                 print("DEBUG: Form validation failed - missing fields")
                 flash("Please fill in Use-case, Sector & Demand.", "warning")
-                return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
+                return render_template("index.html",
+                                       step="identification",
+                                       feedback_url=FEEDBACK_FORM_URL)
 
             print("DEBUG: Form validation passed, calling generate_trends...")
             raw = generate_trends(uc, sec, dem)
-            print(f"DEBUG: generate_trends returned: {len(raw) if raw else 0} characters")
-           
+            print(
+                f"DEBUG: generate_trends returned: {len(raw) if raw else 0} characters"
+            )
+
             if not raw or len(raw.strip()) < 10:
                 print("DEBUG: Empty or minimal response from generate_trends")
                 raw = generate_fallback_trends(uc, sec, dem)
-           
+
             titles, blocks = split_trend_blocks(raw)
-            print(f"DEBUG: Split result - {len(titles)} titles, {len(blocks)} blocks")
-           
+            print(
+                f"DEBUG: Split result - {len(titles)} titles, {len(blocks)} blocks"
+            )
+
             if not titles:
                 print("DEBUG: No titles found, using fallback")
                 raw = generate_fallback_trends(uc, sec, dem)
                 titles, blocks = split_trend_blocks(raw)
-           
+
             trends_md = "\n\n".join(f"### Trend {i+1}: {t}\n{blocks[i]}"
-                                   for i, t in enumerate(titles))
-           
+                                    for i, t in enumerate(titles))
+
             print(f"DEBUG: Final trends_md length: {len(trends_md)}")
 
             session.update({
                 "step": "scouting",
-                "use_case": uc, "sector": sec, "demand": dem,
-                "titles": titles, "blocks": blocks, "trends_md": trends_md,
-                "remaining_trends": titles.copy(), "validation_results": {}
+                "use_case": uc,
+                "sector": sec,
+                "demand": dem,
+                "titles": titles,
+                "blocks": blocks,
+                "trends_md": trends_md,
+                "remaining_trends": titles.copy(),
+                "validation_results": {}
             })
-           
+
             print("DEBUG: Session updated, rendering scouting template")
-            return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
+            return render_template("index.html",
+                                   step="scouting",
+                                   feedback_url=FEEDBACK_FORM_URL)
 
         # Phase 2: Scouting
         elif step == "scouting":
             idx_str = request.form.get("selected_trend_idx", "")
             action = request.form.get("action", "")
-           
+
             if not (idx_str.isdigit() and action in ("validate", "implement")):
-                flash("Pick one trend and click Validate or Implement.", "warning")
-                return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
+                flash("Pick one trend and click Validate or Implement.",
+                      "warning")
+                return render_template("index.html",
+                                       step="scouting",
+                                       feedback_url=FEEDBACK_FORM_URL)
 
             idx = int(idx_str)
             rem = session.get("remaining_trends", [])
-           
+
             if idx < 0 or idx >= len(rem):
                 flash("Select a valid trend index.", "warning")
-                return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
+                return render_template("index.html",
+                                       step="scouting",
+                                       feedback_url=FEEDBACK_FORM_URL)
 
             sel = rem.pop(idx)
             titles = session.get("titles", [])
             blocks = session.get("blocks", [])
-           
+
             if sel not in titles:
                 flash("Selected trend not found.", "error")
-                return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
-               
+                return render_template("index.html",
+                                       step="scouting",
+                                       feedback_url=FEEDBACK_FORM_URL)
+
             block = blocks[titles.index(sel)]
             session["selected_trend"] = sel
 
@@ -1129,23 +1312,83 @@ def chat():
                 ass = assess_trend(sel, block)
                 rad = radar_positioning(sel, ass)
                 rel = relation_criteria(sel, block)
-                session["validation_results"][sel] = {
-                    "assessment": ass, "radar": rad, "relation": rel
+                validation_results = session.get("validation_results", {})
+                validation_results[sel] = {
+                    "assessment": ass,
+                    "radar": rad,
+                    "relation": rel
                 }
+                session["validation_results"] = validation_results
+
+                # Save to file-based session
+                session_id = session.get('session_id', 'unknown')
+                file_session_data = session_manager.load_session_data(
+                    session_id)
+                file_session_data.update({
+                    'use_case':
+                    session.get('use_case', ''),
+                    'sector':
+                    session.get('sector', ''),
+                    'demand':
+                    session.get('demand', ''),
+                    'selected_trend':
+                    sel,
+                    'trends_md':
+                    session.get('trends_md', ''),
+                    'validation_results':
+                    validation_results
+                })
+                session_manager.save_session_data(session_id,
+                                                  file_session_data)
+                print(
+                    f"DEBUG: Saved validation data to file session for {session_id}"
+                )
+
                 session["step"] = "validation"
-                return render_template("index.html", step="validation", feedback_url=FEEDBACK_FORM_URL)
+                return render_template("index.html",
+                                       step="validation",
+                                       feedback_url=FEEDBACK_FORM_URL)
 
             # Direct implementation
             print(f"DEBUG: Direct implementation for trend: {sel}")
             msol = market_ready_solution(sel, block, session.get("sector", ""))
             prts = partners_navigation(sel, block)
-            save_to_db(session["use_case"], session["sector"], session["demand"],
-                       session["trends_md"], sel, "", "", "",
-                       msol, prts, titles, blocks)
+            save_to_db(session["use_case"], session["sector"],
+                       session["demand"], session["trends_md"], sel, "", "",
+                       "", msol, prts, titles, blocks)
             session["market_solution"] = msol
             session["partners"] = prts
+
+            # Save to file-based session
+            session_id = session.get('session_id', 'unknown')
+            file_session_data = session_manager.load_session_data(session_id)
+            file_session_data.update({
+                'use_case':
+                session.get('use_case', ''),
+                'sector':
+                session.get('sector', ''),
+                'demand':
+                session.get('demand', ''),
+                'selected_trend':
+                sel,
+                'trends_md':
+                session.get('trends_md', ''),
+                'validation_results':
+                session.get('validation_results', {}),
+                'market_solution':
+                msol,
+                'partners':
+                prts
+            })
+            session_manager.save_session_data(session_id, file_session_data)
+            print(
+                f"DEBUG: Saved direct implementation data to file session for {session_id}"
+            )
+
             session["step"] = "implementation"
-            return render_template("index.html", step="implementation", feedback_url=FEEDBACK_FORM_URL)
+            return render_template("index.html",
+                                   step="implementation",
+                                   feedback_url=FEEDBACK_FORM_URL)
 
         # Phase 3: Validation
         elif step == "validation":
@@ -1153,31 +1396,64 @@ def chat():
             sel = session.get("selected_trend", "")
             titles = session.get("titles", [])
             blocks = session.get("blocks", [])
-           
+
             if not sel or sel not in titles:
                 flash("No trend selected for validation.", "error")
                 session["step"] = "scouting"
-                return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
-               
+                return render_template("index.html",
+                                       step="scouting",
+                                       feedback_url=FEEDBACK_FORM_URL)
+
             block = blocks[titles.index(sel)]
 
             if action == "validate_more":
                 session["step"] = "scouting"
-                return render_template("index.html", step="scouting", feedback_url=FEEDBACK_FORM_URL)
+                return render_template("index.html",
+                                       step="scouting",
+                                       feedback_url=FEEDBACK_FORM_URL)
 
             # Proceed to implementation
             print(f"DEBUG: Proceeding to implementation for trend: {sel}")
             msol = market_ready_solution(sel, block, session.get("sector", ""))
             prts = partners_navigation(sel, block)
             vr = session["validation_results"].get(sel, {})
-            save_to_db(session["use_case"], session["sector"], session["demand"],
-                       session["trends_md"], sel,
-                       vr.get("assessment", ""), vr.get("radar", ""), vr.get("relation", ""),
-                       msol, prts, titles, blocks)
+            save_to_db(session["use_case"], session["sector"],
+                       session["demand"], session["trends_md"], sel,
+                       vr.get("assessment", ""), vr.get("radar", ""),
+                       vr.get("relation", ""), msol, prts, titles, blocks)
             session["market_solution"] = msol
             session["partners"] = prts
+
+            # Save to file-based session
+            session_id = session.get('session_id', 'unknown')
+            file_session_data = session_manager.load_session_data(session_id)
+            file_session_data.update({
+                'use_case':
+                session.get('use_case', ''),
+                'sector':
+                session.get('sector', ''),
+                'demand':
+                session.get('demand', ''),
+                'selected_trend':
+                sel,
+                'trends_md':
+                session.get('trends_md', ''),
+                'validation_results':
+                session.get('validation_results', {}),
+                'market_solution':
+                msol,
+                'partners':
+                prts
+            })
+            session_manager.save_session_data(session_id, file_session_data)
+            print(
+                f"DEBUG: Saved implementation data to file session for {session_id}"
+            )
+
             session["step"] = "implementation"
-            return render_template("index.html", step="implementation", feedback_url=FEEDBACK_FORM_URL)
+            return render_template("index.html",
+                                   step="implementation",
+                                   feedback_url=FEEDBACK_FORM_URL)
 
     except Exception as e:
         print(f"ERROR in chat route: {e}")
@@ -1185,47 +1461,102 @@ def chat():
         traceback.print_exc()
         flash(f"An error occurred: {str(e)}", "error")
         session["step"] = "identification"
-        return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
+        return render_template("index.html",
+                               step="identification",
+                               feedback_url=FEEDBACK_FORM_URL)
 
     # Fallback - reset
     session["step"] = "identification"
-    return render_template("index.html", step="identification", feedback_url=FEEDBACK_FORM_URL)
+    return render_template("index.html",
+                           step="identification",
+                           feedback_url=FEEDBACK_FORM_URL)
+
 
 @app.route("/download_pdf_report")
 def download_pdf_report():
     """Generate and download PDF report"""
     try:
-        # Get current session data
+        # Get session ID for file-based session lookup
+        session_id = session.get('session_id', 'unknown')
+        print(f"DEBUG PDF: Loading session data for session_id: {session_id}")
+
+        # Load from file-based session first, then fallback to Flask session
+        file_session_data = session_manager.load_session_data(session_id)
+        print(
+            f"DEBUG PDF: File session data keys: {list(file_session_data.keys())}"
+        )
+
+        # Get current session data - prioritize file-based session, fallback to Flask session
+        # Handle validation_results more carefully
+        file_validation = file_session_data.get('validation_results', {})
+        flask_validation = session.get('validation_results', {})
+
+        # Merge validation results from both sources
+        combined_validation = {}
+        if isinstance(file_validation, dict):
+            combined_validation.update(file_validation)
+        if isinstance(flask_validation, dict):
+            combined_validation.update(flask_validation)
+
         session_data = {
-            'use_case': session.get('use_case', ''),
-            'sector': session.get('sector', ''),
-            'demand': session.get('demand', ''),
-            'selected_trend': session.get('selected_trend', ''),
-            'trends_md': session.get('trends_md', ''),
-            'validation_results': session.get('validation_results', {}),
-            'market_solution': session.get('market_solution', ''),
-            'partners': session.get('partners', '')
+            'use_case':
+            file_session_data.get('use_case') or session.get('use_case', ''),
+            'sector':
+            file_session_data.get('sector') or session.get('sector', ''),
+            'demand':
+            file_session_data.get('demand') or session.get('demand', ''),
+            'selected_trend':
+            file_session_data.get('selected_trend')
+            or session.get('selected_trend', ''),
+            'trends_md':
+            file_session_data.get('trends_md') or session.get('trends_md', ''),
+            'validation_results':
+            combined_validation,
+            'market_solution':
+            file_session_data.get('market_solution')
+            or session.get('market_solution', ''),
+            'partners':
+            file_session_data.get('partners') or session.get('partners', '')
         }
-        
+
+        print(
+            f"DEBUG PDF: Final session_data keys: {list(session_data.keys())}")
+        print(
+            f"DEBUG PDF: validation_results type: {type(session_data['validation_results'])}"
+        )
+        print(
+            f"DEBUG PDF: validation_results content: {session_data['validation_results']}"
+        )
+        print(
+            f"DEBUG PDF: market_solution length: {len(session_data.get('market_solution', ''))}"
+        )
+        print(
+            f"DEBUG PDF: partners length: {len(session_data.get('partners', ''))}"
+        )
+
         # Generate PDF
         pdf_buffer = generate_pdf_report(session_data)
-        
+
         # Create filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        use_case_clean = re.sub(r'[^\w\s-]', '', session_data.get('use_case', 'analysis')).replace(' ', '_')
+        use_case_clean = re.sub(r'[^\w\s-]', '',
+                                session_data.get('use_case',
+                                                 'analysis')).replace(
+                                                     ' ', '_')
         filename = f"Schaeffler_Technology_Analysis_{use_case_clean}_{timestamp}.pdf"
-        
-        return send_file(
-            pdf_buffer,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/pdf'
-        )
-    
+
+        return send_file(pdf_buffer,
+                         as_attachment=True,
+                         download_name=filename,
+                         mimetype='application/pdf')
+
     except Exception as e:
         print(f"PDF generation error: {e}")
+        import traceback
+        traceback.print_exc()
         flash("Error generating PDF report. Please try again.", "error")
         return redirect(url_for('chat'))
+
 
 @app.route("/api/sources")
 def get_sources():
@@ -1233,11 +1564,12 @@ def get_sources():
     sources = session.get('last_sources', [])
     return jsonify(sources)
 
+
 # ─── CSS Injection for Better Formatting ────────────────────────────────────
 @app.context_processor
 def inject_custom_css():
-   """Inject custom CSS for enhanced formatting"""
-   custom_css = """
+    """Inject custom CSS for enhanced formatting"""
+    custom_css = """
    <style>
        /* Enhanced Table Styling */
        .trend-table {
@@ -1362,17 +1694,23 @@ def inject_custom_css():
        }
    </style>
    """
-   return dict(custom_css=Markup(custom_css))
+    return dict(custom_css=Markup(custom_css))
+
 
 # ─── Error Handlers ─────────────────────────────────────────────────────────
 @app.errorhandler(404)
 def not_found(error):
-   return "Page not found", 404
+    return "Page not found", 404
+
 
 @app.errorhandler(500)
 def internal_error(error):
-   return "Internal server error", 500
+    return "Internal server error", 500
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-   app.run(debug=True)
+    # Configure for Replit environment
+    host = os.getenv("FLASK_HOST", "0.0.0.0")
+    port = int(os.getenv("FLASK_PORT", 5000))
+    app.run(host=host, port=port, debug=True)
