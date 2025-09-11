@@ -12,3 +12,8 @@ langchain>=0.0.200
 langchain-community>=0.0.5
 reportlab
 psycopg2-binary==2.9.10
+streamlit>=1.36
+plotly>=5.18
+pandas
+pymysql
+python-dotenv
