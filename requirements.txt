@@ -17,3 +17,4 @@ plotly>=5.18
 pandas
 pymysql
 python-dotenv
+matplotlib
