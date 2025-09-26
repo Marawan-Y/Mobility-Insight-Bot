@@ -1,0 +1,274 @@
+{
+  "report_metadata": {
+    "generated_at": "2025-09-26T14:49:48.709954",
+    "report_version": "1.0.0",
+    "analysis_scope": "0 queries analyzed",
+    "purpose": "LLM Performance Analysis for GPT Model Review",
+    "instructions_for_gpt": {
+      "analysis_approach": {
+        "primary_focus": "Evaluate LLM performance patterns, identify strengths and weaknesses",
+        "key_questions": [
+          "Is this LLM ready for production use?",
+          "What are the main quality concerns?",
+          "Which metrics show concerning trends?",
+          "What recommendations would improve performance?"
+        ]
+      },
+      "metric_interpretation": {
+        "good_performance_indicators": [
+          "High Pass@1 rates (80%+)",
+          "Low error rates (<10%)",
+          "Low hallucination risk (<20%)",
+          "High content diversity (70%+)",
+          "Low confidence CV (<20%)"
+        ],
+        "warning_signs": [
+          "Declining success rates over time",
+          "High semantic drift (>50%)",
+          "Inconsistent confidence scores",
+          "Increasing error rates"
+        ]
+      },
+      "analysis_priorities": {
+        "critical": [
+          "Production readiness",
+          "Safety and reliability",
+          "Error rates"
+        ],
+        "important": [
+          "Content quality",
+          "Performance efficiency",
+          "Consistency"
+        ],
+        "informational": [
+          "Detailed breakdowns",
+          "Historical trends",
+          "Comparative metrics"
+        ]
+      },
+      "reporting_guidelines": {
+        "structure": "Provide executive summary, key findings, recommendations, and supporting details",
+        "tone": "Professional, data-driven, actionable",
+        "focus": "Actionable insights rather than just metric descriptions"
+      }
+    }
+  },
+  "executive_summary": {
+    "overall_status": "NOT_READY",
+    "status_description": "LLM performance is below production standards and requires significant improvements",
+    "key_metrics": {
+      "total_queries_analyzed": 0,
+      "total_trials": 0,
+      "average_pass_at_1_rate": 0,
+      "average_error_rate": 0,
+      "average_hallucination_risk": 0,
+      "system_confidence_cv": 0
+    },
+    "critical_findings": [],
+    "top_recommendations": [
+      "Improve prompt engineering to increase success rates",
+      "Consider model fine-tuning or alternative model architectures"
+    ]
+  },
+  "metric_definitions": {
+    "title_diversity": {
+      "name": "Title Diversity",
+      "category": "Content Diversity",
+      "description": "Measures how varied the generated technology trend titles are across multiple trials",
+      "interpretation_guide": "Higher values indicate the LLM generates more unique and creative titles rather than repeating similar concepts",
+      "performance_ranges": {
+        "good": "70-100% (0.7-1.0)",
+        "warning": "50-70% (0.5-0.7)",
+        "critical": "Below 50% (0.5)"
+      },
+      "calculation_method": "Ratio of unique titles to total titles generated across trials"
+    },
+    "semantic_drift": {
+      "name": "Semantic Drift",
+      "category": "Content Consistency",
+      "description": "Measures how much the semantic meaning changes across consecutive responses",
+      "interpretation_guide": "Low drift (0-30%) indicates consistent messaging; High drift (70-100%) suggests unstable or incoherent outputs",
+      "performance_ranges": {
+        "good": "0-30%",
+        "warning": "30-50%",
+        "critical": "Above 50%"
+      },
+      "calculation_method": "TF-IDF cosine similarity variance between consecutive responses"
+    },
+    "confidence_cv": {
+      "name": "Confidence Coefficient of Variation",
+      "category": "Reliability",
+      "description": "Measures the relative variability of confidence scores across trials",
+      "interpretation_guide": "Lower CV indicates consistent confidence levels; Higher CV suggests unstable self-assessment",
+      "performance_ranges": {
+        "good": "0-20%",
+        "warning": "20-40%",
+        "critical": "Above 40%"
+      },
+      "calculation_method": "Standard deviation divided by mean of confidence scores"
+    },
+    "pass_at_1": {
+      "name": "Pass@1 Success Rate",
+      "category": "Task Completion",
+      "description": "Percentage of single attempts that meet quality thresholds",
+      "interpretation_guide": "Higher pass rates indicate reliable performance on first attempt",
+      "performance_ranges": {
+        "good": "80-100%",
+        "warning": "60-80%",
+        "critical": "Below 60%"
+      },
+      "calculation_method": "Percentage of trials with confidence scores above threshold (typically 0.7)"
+    },
+    "pass_at_3": {
+      "name": "Pass@3 Success Rate",
+      "category": "Task Completion",
+      "description": "Percentage of 3-attempt sequences where all attempts succeed",
+      "interpretation_guide": "Measures consistency across multiple attempts; Critical for production reliability",
+      "performance_ranges": {
+        "good": "70-100%",
+        "warning": "50-70%",
+        "critical": "Below 50%"
+      },
+      "calculation_method": "Percentage of 3-trial groups where all trials exceed quality threshold"
+    },
+    "hallucination_risk": {
+      "name": "Hallucination Risk Score",
+      "category": "Content Accuracy",
+      "description": "Measures likelihood of generating false or inconsistent information",
+      "interpretation_guide": "Higher scores indicate greater risk of hallucinations and factual errors",
+      "performance_ranges": {
+        "good": "0-20%",
+        "warning": "20-40%",
+        "critical": "Above 40%"
+      },
+      "calculation_method": "Variance in response similarity and numerical consistency across trials"
+    },
+    "error_rate": {
+      "name": "Error Rate",
+      "category": "Content Quality",
+      "description": "Percentage of responses containing detectable errors (format, placeholders, truncation)",
+      "interpretation_guide": "Lower error rates indicate higher output quality and reliability",
+      "performance_ranges": {
+        "good": "0-10%",
+        "warning": "10-25%",
+        "critical": "Above 25%"
+      },
+      "calculation_method": "Percentage of responses with format errors, placeholders, or truncation"
+    },
+    "efficiency_score": {
+      "name": "Efficiency Score",
+      "category": "Performance",
+      "description": "Combined metric of token usage efficiency and time performance",
+      "interpretation_guide": "Higher scores indicate better resource utilization and faster processing",
+      "performance_ranges": {
+        "good": "0.7-1.0",
+        "warning": "0.4-0.7",
+        "critical": "Below 0.4"
+      },
+      "calculation_method": "Weighted combination of token efficiency and time efficiency normalized by success rate"
+    },
+    "latency_mean": {
+      "name": "Average Response Latency",
+      "category": "Performance",
+      "description": "Mean time taken to generate responses",
+      "interpretation_guide": "Lower latency indicates faster processing; Critical for user experience",
+      "performance_ranges": {
+        "good": "0-5000ms",
+        "warning": "5000-15000ms",
+        "critical": "Above 15000ms"
+      },
+      "calculation_method": "Average time between request and response completion"
+    },
+    "trajectory_uniqueness": {
+      "name": "Reasoning Trajectory Uniqueness",
+      "category": "Reasoning Quality",
+      "description": "Measures diversity in reasoning steps and thought processes",
+      "interpretation_guide": "Higher uniqueness indicates more varied and thorough reasoning approaches",
+      "performance_ranges": {
+        "good": "70-100%",
+        "warning": "50-70%",
+        "critical": "Below 50%"
+      },
+      "calculation_method": "Ratio of unique reasoning steps to total steps across responses"
+    }
+  },
+  "system_performance_analysis": {
+    "system_metrics": {},
+    "aggregated_performance": {},
+    "performance_distribution": {},
+    "outlier_analysis": {
+      "top_performers": [],
+      "poor_performers": [],
+      "inconsistent_performers": []
+    }
+  },
+  "query_level_analysis": [],
+  "comparative_analysis": {
+    "note": "Insufficient data for comparative analysis"
+  },
+  "framework_assessments": {
+    "production_readiness": {
+      "name": "Production Readiness Assessment",
+      "description": "Evaluates if the LLM is ready for production deployment",
+      "assessment_results": {
+        "metrics_assessment": {},
+        "queries_by_tier": {
+          "excellent": 0,
+          "good": 0,
+          "poor": 0
+        },
+        "overall_score": 0
+      },
+      "overall_rating": "",
+      "key_findings": []
+    },
+    "content_quality": {
+      "name": "Content Quality Assessment",
+      "description": "Evaluates the quality and consistency of generated content",
+      "assessment_results": {
+        "metrics_assessment": {},
+        "queries_by_tier": {
+          "excellent": 0,
+          "good": 0,
+          "poor": 0
+        },
+        "overall_score": 0
+      },
+      "overall_rating": "",
+      "key_findings": []
+    },
+    "reliability": {
+      "name": "System Reliability Assessment",
+      "description": "Evaluates consistency and predictability of LLM outputs",
+      "assessment_results": {
+        "metrics_assessment": {},
+        "queries_by_tier": {
+          "excellent": 0,
+          "good": 0,
+          "poor": 0
+        },
+        "overall_score": 0
+      },
+      "overall_rating": "",
+      "key_findings": []
+    }
+  },
+  "trend_analysis": {
+    "note": "Trend analysis requires temporal data across multiple time periods",
+    "recommendations": "Implement regular performance monitoring to enable trend analysis",
+    "future_considerations": [
+      "Track performance metrics over time",
+      "Monitor for performance degradation",
+      "Identify seasonal or usage-based patterns"
+    ]
+  },
+  "actionable_insights": {
+    "immediate_actions": [],
+    "medium_term_improvements": [],
+    "long_term_strategy": [],
+    "specific_recommendations": {}
+  },
+  "raw_data": {
+    "note": "Raw data excluded for brevity"
+  }
+}
