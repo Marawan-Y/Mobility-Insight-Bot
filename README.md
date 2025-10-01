@@ -265,3 +265,15 @@ For issues or questions:
 - Open source community contributors
 
 ---
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.<ID>.svg)](https://doi.org/10.5281/zenodo.<ID>)
+## 📚 Cite this software
+```bibtex
+@software{Younis_MobilityInsightBot_2025,
+  author    = {Marawan Younis},
+  title     = {Mobility Insight Bot (v1.0.0)},
+  year      = {2025},
+  publisher = {Zenodo},
+  version   = {1.0.0},
+  doi       = {10.5281/zenodo.<17247162>},
+  url       = {(https://doi.org/10.5281/zenodo.17247162)}
+}
