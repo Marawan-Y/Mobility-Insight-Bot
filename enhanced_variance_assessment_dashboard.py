@@ -342,6 +342,62 @@ def fetch_trend_queries(db_cfg: dict) -> pd.DataFrame:
 
     return df
 
+# ---- Data Source Management (Database or Upload) ----
+class DataSourceManager:
+    """Manage different data sources (database vs uploaded files)."""
+    def __init__(self):
+        self.db_cfg = _get_db_config_from_env()
+
+    def test_database_connection(self) -> bool:
+        """Try connecting to the database to validate credentials."""
+        try:
+            conn = pymysql.connect(**self.db_cfg)
+            conn.close()
+            return True
+        except Exception as e:
+            st.error(f"Database connection failed: {e}")
+            return False
+
+    @st.cache_data(ttl=60)
+    def load_from_database(_self) -> pd.DataFrame:
+        """Load data directly from DB using the existing helper."""
+        return fetch_trend_queries(_self.db_cfg)
+
+    def load_from_uploaded_file(self, uploaded_file) -> pd.DataFrame:
+        """Validate and load uploaded JSON exported from database_export_for_dashboard.py"""
+        try:
+            data = json.load(uploaded_file)
+        except Exception as e:
+            st.error(f"Failed to read JSON: {e}")
+            return pd.DataFrame()
+
+        # Determine structure: either dict with 'trend_queries' or a raw list
+        if isinstance(data, dict) and "trend_queries" in data:
+            records = data["trend_queries"]
+        elif isinstance(data, list):
+            records = data
+        else:
+            st.error("Invalid JSON structure. Expected key 'trend_queries' or top-level list of records.")
+            return pd.DataFrame()
+
+        df = pd.DataFrame.from_records(records)
+        # Required columns minimal set
+        required_cols = {"id","use_case","sector","demand","trend_solutions","created_at"}
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            st.error(f"Uploaded file missing required columns: {missing}")
+            return pd.DataFrame()
+
+        st.success(f"✅ Loaded {len(df):,} records from uploaded file")
+        # Optional metadata display
+        if isinstance(data, dict):
+            meta = data.get("export_metadata") or data.get("schema_info")
+            if meta:
+                with st.expander("📦 Upload file metadata"):
+                    st.json(meta)
+        return df
+
+
 def create_query_fingerprint(use_case: str, sector: str, demand: str) -> str:
     """Create unique fingerprint for each (use_case, sector, demand) combo."""
     query_str = f"{use_case}|{sector}|{demand}".lower().strip()
@@ -508,17 +564,48 @@ class EnhancedVarianceAnalysisDashboard:
     def __init__(self):
         self.db_cfg = _get_db_config_from_env()
         self.metrics = AdvancedMetrics()
+        self.data_manager = DataSourceManager()
     
     def create_dashboard(self):
         """Create the enhanced dashboard with advanced metrics"""
         st.title("🔬 Enhanced LLM Variance Analysis Dashboard")
         st.markdown("Advanced AI agent evaluation metrics for consistency and reliability assessment")
         
-        # Fetch data
-        df = fetch_trend_queries(self.db_cfg)
-        if df.empty:
-            st.warning("No data available in the database.")
-            return
+        # Data source selection
+        st.sidebar.header("📊 Data Source")
+        data_source = st.sidebar.radio(
+            "Choose data source:",
+            ["Database Connection", "Upload File"],
+            help="Select whether to connect to database or upload a data file"
+        )
+        
+        # Branch: DB vs Upload
+        if data_source == "Database Connection":
+            # DB connection test button
+            if st.sidebar.button("🔌 Test Database Connection"):
+                if self.data_manager.test_database_connection():
+                    st.sidebar.success("✅ Database connection successful")
+                else:
+                    st.sidebar.error("❌ Database connection failed")
+                    return
+            # Load DB data
+            df = self.data_manager.load_from_database()
+            if df.empty:
+                st.warning("No data available in the database.")
+                return
+        else:
+            uploaded_file = st.sidebar.file_uploader(
+                "Choose exported JSON file",
+                type=["json"],
+                help="Upload JSON file exported from database_export_for_dashboard.py"
+            )
+            if uploaded_file is None:
+                st.info("👆 Please upload a JSON file exported from your database")
+                return
+            df = self.data_manager.load_from_uploaded_file(uploaded_file)
+            if df.empty:
+                st.warning("Uploaded file didn't contain valid records.")
+                return
         
         # Add query fingerprint
         df["query_fingerprint"] = df.apply(
@@ -588,7 +675,7 @@ class EnhancedVarianceAnalysisDashboard:
             "⚡ Efficiency Metrics",
             "🔍 Error Classification",
             "📉 Temporal Patterns",
-            "📋 Raw Data Export"
+            "📋 Data Export"
         ])
         
         with tabs[0]:
@@ -697,6 +784,7 @@ class EnhancedVarianceAnalysisDashboard:
         analysis_results = []
         
         progress_bar = st.progress(0)
+        status_text = st.empty()
         status_text = st.empty()
         
         for idx, (_, query) in enumerate(filtered_queries.iterrows()):

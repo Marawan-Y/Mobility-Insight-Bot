@@ -991,7 +991,7 @@ upstream app_servers {
 
 server {
     listen 80;
-    server_name mobility.schaeffler.com;
+    server_name e.g.: "mobility.schaeffler.com";
     
     location / {
         proxy_pass http://app_servers;
@@ -1633,26 +1633,8 @@ def health_check():
 
 ### 15.5 Contact & Escalation
 
-**Support Levels**:
-
-**Level 1 - Application Support**
-- Email: mobility-support@schaeffler.com
-- Response time: 4 hours
+- Email: younis4694@gmail.com
 - Handles: User issues, basic troubleshooting
-
-**Level 2 - Technical Support**
-- Email: mobility-tech@schaeffler.com
-- Response time: 2 hours
-- Handles: Database issues, API problems, performance
-
-**Level 3 - Development Team**
-- Email: mobility-dev@schaeffler.com
-- Response time: 1 hour for P1
-- Handles: Code fixes, architecture changes
-
-**Emergency Hotline**
-- Phone: +49-xxx-xxx-xxxx (24/7 for P1 issues)
-- Slack: #mobility-platform-urgent
 
 ### 15.6 Preventive Maintenance Schedule
 
@@ -1717,7 +1699,7 @@ SESSION_PERMANENT=False
 PERMANENT_SESSION_LIFETIME=3600
 
 # Security
-CORS_ORIGINS=https://mobility.schaeffler.com
+CORS_ORIGINS= e.g. "https://mobility.schaeffler.com"
 RATE_LIMIT_ENABLED=True
 RATE_LIMIT_DEFAULT=100 per hour
 
@@ -1806,5 +1788,3 @@ Retrieve assessment results
 ---
 
 **End of Technical Documentation**
-
-*For additional support or questions not covered in this documentation, please contact the Mobility Platform Development Team at mobility-dev@schaeffler.com*
