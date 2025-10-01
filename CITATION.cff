@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+title: "Mobility Insight Bot (Thesis Application)"
+message: "If you use this software, please cite it."
+type: software
+authors:
+  - family-names: Younis
+    given-names: Marawan
+repository-code: "https://github.com/Marawan-Y/Mobility-Insight-Bot"
+url: "https://github.com/Marawan-Y/Mobility-Insight-Bot"
+keywords: [agentic ai, mobility, trend mining, market implementation]
+license: MIT
+version: 1.0.0
+date-released: 2025-10-01
