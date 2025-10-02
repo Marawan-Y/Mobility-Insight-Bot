@@ -18,7 +18,7 @@ The Mobility Insight Platform transforms how Schaeffler identifies and evaluates
 - **4-Phase Innovation Pipeline**:
   1. **Identification**: Define mobility use-case, sector, and specific demands
   2. **Scouting**: AI generates 3 disruptive technology trends with confidence scores
-  3. **Validation**: Comprehensive assessment using radar positioning and PESTEL analysis
+  3. **Validation**: Comprehensive assessment 
   4. **Implementation**: Market-ready solutions with partnership strategies and roadmaps
 
 ### Intelligent Components
@@ -71,8 +71,8 @@ The Mobility Insight Platform transforms how Schaeffler identifies and evaluates
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/schaeffler/mobility-insight-platform.git
-cd mobility-insight-platform
+git clone [https://github.com/Marawan-Y/Mobility-Insight-Bot]
+cd mobility-insight-bot
 ```
 
 ### Step 2: Create Virtual Environment
